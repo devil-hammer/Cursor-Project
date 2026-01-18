@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Surf Tracker</title>
+    <link rel="icon" type="image/png" href="assets/favicon.png">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="shortcut icon" href="assets/favicon.ico">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏄 Semi Kooks Surf Tracker 🤙</h1>
+            <p class="subtitle">Track your waves with friends</p>
+            <nav class="nav-links">
+                <a href="admin.html">Admin Panel →</a>
+            </nav>
+        </header>
+
+        <main>
+            <!-- Team Leaderboard Section -->
+            <section class="section team-leaderboard-section">
+                <h2>Team Leaderboard</h2>
+                <div id="teamLeaderboardContainer" class="leaderboard-container">
+                    <p class="placeholder">Loading team leaderboard...</p>
+                </div>
+            </section>
+
+            <!-- Individual Leaderboard Section -->
+            <section class="section leaderboard-section">
+                <h2>Individual Leaderboard</h2>
+                <div id="leaderboardContainer" class="leaderboard-container">
+                    <p class="placeholder">Loading leaderboard...</p>
+                </div>
+            </section>
+
+            <!-- Add Session Form -->
+            <section class="section session-form-section">
+                <h2>Log a Surf Session</h2>
+                <form id="sessionForm" class="form">
+                    <div class="form-group">
+                        <label for="sessionUser">Surfer *</label>
+                        <select id="sessionUser" name="user_id" required>
+                            <option value="">Select a user...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="sessionDate">Date *</label>
+                        <input type="date" id="sessionDate" name="date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="sessionLocation">Location</label>
+                        <input type="text" id="sessionLocation" name="location" placeholder="e.g., Bondi Beach">
+                    </div>
+                    <div class="form-group">
+                        <label for="sessionNotes">Notes</label>
+                        <textarea id="sessionNotes" name="notes" rows="3" placeholder="How was the surf? Conditions?"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Session</button>
+                </form>
+                <div id="sessionMessage" class="message"></div>
+            </section>
+
+            <!-- Statistics Section -->
+            <section class="section stats-section">
+                <h2>Your Statistics</h2>
+                <div id="statsContainer" class="stats-container">
+                    <p class="placeholder">Select a user to view statistics</p>
+                </div>
+                <div class="stats-control">
+                    <select id="statsUserSelect">
+                        <option value="">Select user for stats...</option>
+                    </select>
+                    <button id="loadStatsBtn" class="btn btn-secondary">Load Stats</button>
+                </div>
+            </section>
+
+            <!-- Sessions List -->
+            <section class="section sessions-section">
+                <h2>Recent Sessions</h2>
+                <div class="filter-control">
+                    <label for="filterUser">Filter by user:</label>
+                    <select id="filterUser">
+                        <option value="">All users</option>
+                    </select>
+                    <button id="refreshSessionsBtn" class="btn btn-secondary">Refresh</button>
+                </div>
+                <div id="sessionsContainer" class="sessions-container">
+                    <p class="placeholder">Loading sessions...</p>
+                </div>
+                <div id="sessionsPaginationContainer" class="pagination-container"></div>
+            </section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

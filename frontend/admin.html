@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Surf Tracker</title>
+    <link rel="icon" type="image/png" href="assets/favicon.png">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="shortcut icon" href="assets/favicon.ico">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏄 Semi Kooks Surf Tracker 🤙</h1>
+            <p class="subtitle">Admin Panel</p>
+            <nav class="nav-links">
+                <a href="index.html">← Back to Dashboard</a>
+            </nav>
+        </header>
+
+        <main>
+            <!-- Team Management Section -->
+            <section class="section team-section">
+                <h2>Teams</h2>
+                <form id="teamForm" class="form">
+                    <div class="form-group">
+                        <label for="teamName">Team Name *</label>
+                        <input type="text" id="teamName" name="name" required placeholder="Enter team name">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create Team</button>
+                </form>
+                <div id="teamMessage" class="message"></div>
+            </section>
+
+            <!-- Assign User to Team -->
+            <section class="section assign-team-section">
+                <h2>Assign User to Team</h2>
+                <form id="assignTeamForm" class="form">
+                    <div class="form-group">
+                        <label for="assignUser">User *</label>
+                        <select id="assignUser" name="user_id" required>
+                            <option value="">Select a user...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="assignTeam">Team</label>
+                        <select id="assignTeam" name="team_id">
+                            <option value="">No team</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Assign to Team</button>
+                </form>
+                <div id="assignTeamMessage" class="message"></div>
+            </section>
+
+            <!-- User Management Section -->
+            <section class="section user-section">
+                <h2>Add User</h2>
+                <form id="userForm" class="form">
+                    <div class="form-group">
+                        <label for="userName">Name *</label>
+                        <input type="text" id="userName" name="name" required placeholder="Enter your name">
+                    </div>
+                    <div class="form-group">
+                        <label for="userEmail">Email (optional)</label>
+                        <input type="email" id="userEmail" name="email" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="userTeam">Team (optional)</label>
+                        <select id="userTeam" name="team_id">
+                            <option value="">No team</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add User</button>
+                </form>
+                <div id="userMessage" class="message"></div>
+            </section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
