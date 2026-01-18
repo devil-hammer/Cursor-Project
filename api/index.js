@@ -7,10 +7,30 @@ function ensureInit() {
   return initPromise;
 }
 
-// require server after we've set VERCEL; server.js skips listen/init when VERCEL is set
-const app = require('../backend/server');
+let handler = null;
+function getHandler() {
+  if (!handler) {
+    // Require server lazily so require-time errors become a JSON 500.
+    // server.js skips listen/init when VERCEL is set.
+    const app = require('../backend/server');
+    handler = serverless(app);
+  }
+  return handler;
+}
 
 module.exports = async (req, res) => {
-  await ensureInit();
-  return serverless(app)(req, res);
+  try {
+    await ensureInit();
+    return getHandler()(req, res);
+  } catch (err) {
+    console.error('Unhandled API error:', err);
+    res.statusCode = 500;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(
+      JSON.stringify({
+        error: 'Internal Server Error',
+        message: err && err.message ? err.message : String(err),
+      })
+    );
+  }
 };

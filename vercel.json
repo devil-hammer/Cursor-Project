@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "frontend/**/*",
+      "src": "frontend/**",
       "use": "@vercel/static"
     },
     {
@@ -11,11 +11,12 @@
     }
   ],
   "routes": [
-    { "src": "/api", "dest": "/api" },
-    { "src": "/api/(.*)", "dest": "/api" },
+    { "handle": "filesystem" },
+
+    { "src": "/api(?:/.*)?", "dest": "/api/index.js" },
 
     { "src": "/", "dest": "/frontend/index.html" },
     { "src": "/(.*)", "dest": "/frontend/$1" }
   ],
-  "installCommand": "npm install && cd backend && npm install"
+  "installCommand": "npm install"
 }
