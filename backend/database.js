@@ -2,7 +2,10 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // Database file path
-const DB_PATH = path.join(__dirname, 'surf_tracker.db');
+// On Vercel, the project filesystem is read-only; use /tmp (writable but ephemeral).
+const DB_PATH = process.env.VERCEL
+  ? path.join('/tmp', 'surf_tracker.db')
+  : path.join(__dirname, 'surf_tracker.db');
 
 // Create and initialize database
 function initDatabase() {

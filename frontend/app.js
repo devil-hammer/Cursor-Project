@@ -1,5 +1,8 @@
-// API Base URL
-const API_BASE_URL = 'http://localhost:3000/api';
+// API Base URL: localhost for local dev; Vercel API for production (frontend on GitHub Pages)
+const API_BASE_URL = (typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
+  ? 'http://localhost:3000/api'
+  : 'https://YOUR_VERCEL_PROJECT.vercel.app/api';  // Replace YOUR_VERCEL_PROJECT with your Vercel project subdomain
 
 // State
 let users = [];

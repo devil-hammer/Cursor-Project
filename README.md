@@ -125,6 +125,24 @@ The backend provides these API endpoints:
 - The database file (`surf_tracker.db`) is created automatically
 - If you have issues, delete `backend/surf_tracker.db` and restart the server
 
+## Deploying to Vercel (SQLite)
+
+The app is set up to run on Vercel using **SQLite** with the `sqlite3` package.
+
+- **On Vercel**: The database file lives in `/tmp/surf_tracker.db` because the project filesystem is read-only.  
+  **Important:** `/tmp` is ephemeral—data can be lost on cold starts and is not shared across function instances. Fine for demos and light use; for critical data, consider a hosted DB later.
+- **Locally**: The DB file is `backend/surf_tracker.db` and persists as usual.
+
+**Deploy:**
+
+1. Install the Vercel CLI: `npm i -g vercel`
+2. From the project root: `vercel`
+3. Follow the prompts (link to an existing project or create one).
+
+The `installCommand` in `vercel.json` runs `npm install` at the root and in `backend`, so `sqlite3` is built for Vercel’s Linux environment. If you see `Cannot find module 'sqlite3'` or a native-addon error in the Vercel logs, you can try [sql.js](https://github.com/sql-js/sql.js) (pure JS, no native bindings) as an alternative; the schema and queries would need to be adapted.
+
+---
+
 ## Next Steps
 
 Once you have the basic app working, you can:
