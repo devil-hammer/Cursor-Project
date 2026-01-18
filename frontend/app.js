@@ -1,8 +1,20 @@
-// API Base URL: localhost for local dev; Vercel API for production (frontend on GitHub Pages)
-const API_BASE_URL = (typeof window !== 'undefined' &&
-  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
-  ? 'http://localhost:3000/api'
-  : 'https://YOUR_VERCEL_PROJECT.vercel.app/api';  // Replace YOUR_VERCEL_PROJECT with your Vercel project subdomain
+// API Base URL:
+// - local dev: hit local Express server
+// - hosted on same origin (e.g. Vercel/custom domain): use same-origin /api
+// - GitHub Pages: point to your Vercel deployment (replace the placeholder)
+const API_BASE_URL = (() => {
+  if (typeof window === 'undefined') return '/api';
+
+  const host = window.location.hostname;
+  const isLocal = host === 'localhost' || host === '127.0.0.1';
+  if (isLocal) return 'http://localhost:3000/api';
+
+  const isGitHubPages = host.endsWith('github.io');
+  if (isGitHubPages) return 'https://YOUR_VERCEL_PROJECT.vercel.app/api'; // replace YOUR_VERCEL_PROJECT
+
+  // Vercel or any other hosting where frontend+API share an origin
+  return `${window.location.origin}/api`;
+})();
 
 // State
 let users = [];
