@@ -66,15 +66,16 @@ router.post('/', async (req, res) => {
     }
 
     const rows = await sql`
-      SELECT
-        u.*,
-        t.name AS team_name
-      FROM (
+      WITH inserted AS (
         INSERT INTO users (name, email, team_id)
         VALUES (${trimmedName}, ${trimmedEmail}, ${teamId})
         RETURNING *
-      ) u
-      LEFT JOIN teams t ON u.team_id = t.id;
+      )
+      SELECT
+        inserted.*,
+        t.name AS team_name
+      FROM inserted
+      LEFT JOIN teams t ON inserted.team_id = t.id;
     `;
 
     res.status(201).json(rows[0]);
@@ -107,16 +108,17 @@ router.put('/:id/team', async (req, res) => {
     }
 
     const rows = await sql`
-      SELECT
-        u.*,
-        t.name AS team_name
-      FROM (
+      WITH updated AS (
         UPDATE users
         SET team_id = ${teamId}
         WHERE id = ${userId}
         RETURNING *
-      ) u
-      LEFT JOIN teams t ON u.team_id = t.id;
+      )
+      SELECT
+        updated.*,
+        t.name AS team_name
+      FROM updated
+      LEFT JOIN teams t ON updated.team_id = t.id;
     `;
 
     res.json(rows[0]);
