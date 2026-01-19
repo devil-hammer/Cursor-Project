@@ -292,7 +292,10 @@ async function handleAssignTeamSubmit(e) {
         showSuccess(assignTeamMessage, message);
         assignTeamForm.reset();
         await loadUsers();
-        await loadTeamLeaderboard();
+        // Only refresh dashboard widgets if they're present on this page
+        if (teamLeaderboardContainer) {
+            await loadTeamLeaderboard();
+        }
     } catch (error) {
         showError(assignTeamMessage, 'Failed to assign team: ' + error.message);
     }
@@ -317,10 +320,15 @@ async function handleUserSubmit(e) {
         showSuccess(userMessage, `User "${newUser.name}" added successfully!`);
         userForm.reset();
         await loadUsers();
-        await loadTeamLeaderboard();
+        // Only refresh dashboard widgets if they're present on this page
+        if (teamLeaderboardContainer) {
+            await loadTeamLeaderboard();
+        }
         
         // Auto-select the new user in session form
-        sessionUserSelect.value = newUser.id;
+        if (sessionUserSelect) {
+            sessionUserSelect.value = newUser.id;
+        }
     } catch (error) {
         showError(userMessage, 'Failed to add user: ' + error.message);
     }
@@ -581,6 +589,9 @@ function displayLeaderboard(leaderboard) {
 
 // Load Team Leaderboard
 async function loadTeamLeaderboard() {
+    // This widget only exists on the main dashboard page
+    if (!teamLeaderboardContainer) return;
+
     try {
         const teamsWithStats = await apiCall('/teams/leaderboard/all');
         
@@ -592,6 +603,9 @@ async function loadTeamLeaderboard() {
 
 // Display Team Leaderboard
 function displayTeamLeaderboard(teams) {
+    // This widget only exists on the main dashboard page
+    if (!teamLeaderboardContainer) return;
+
     if (teams.length === 0) {
         teamLeaderboardContainer.innerHTML = '<p class="placeholder">No teams yet. Create a team to get started!</p>';
         return;
