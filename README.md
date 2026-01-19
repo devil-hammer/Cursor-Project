@@ -31,7 +31,7 @@ Before you can run this app, you need to install:
 
    This will install:
    - Express (web server framework)
-   - SQLite3 (database)
+   - Neon Postgres client (`@neondatabase/serverless`)
    - CORS (allows frontend to communicate with backend)
    - Body-parser (reads JSON from requests)
 
@@ -46,9 +46,10 @@ cd backend
 node server.js
 ```
 
+The backend requires a Postgres connection string in your environment (for example `POSTGRES_URL` or `DATABASE_URL`).
+
 You should see:
 ```
-Connected to SQLite database
 Database tables initialized
 Server is running on http://localhost:3000
 API health check: http://localhost:3000/api/health
@@ -122,24 +123,21 @@ The backend provides these API endpoints:
 - Check that the API_BASE_URL in `frontend/app.js` matches your backend URL
 
 ### Database errors
-- The database file (`surf_tracker.db`) is created automatically
-- If you have issues, delete `backend/surf_tracker.db` and restart the server
+- This project uses **Postgres** (Neon / Vercel Postgres).
+- For local dev, ensure you have a Postgres connection string set (for example `POSTGRES_URL` or `DATABASE_URL`).
 
-## Deploying to Vercel (SQLite)
+## Deploying to Vercel (Neon Postgres)
 
-The app is set up to run on Vercel using **SQLite** with the `sqlite3` package.
+The app is set up to run on Vercel using **Neon Postgres** (via the Vercel integration).
 
-- **On Vercel**: The database file lives in `/tmp/surf_tracker.db` because the project filesystem is read-only.  
-  **Important:** `/tmp` is ephemeral—data can be lost on cold starts and is not shared across function instances. Fine for demos and light use; for critical data, consider a hosted DB later.
-- **Locally**: The DB file is `backend/surf_tracker.db` and persists as usual.
+- **On Vercel**: connect a Neon Postgres database to your project. Vercel will inject environment variables like `POSTGRES_URL` / `DATABASE_URL`.
+- **Locally**: set `POSTGRES_URL` (or `DATABASE_URL`) in your environment before running the backend.
 
 **Deploy:**
 
 1. Install the Vercel CLI: `npm i -g vercel`
 2. From the project root: `vercel`
 3. Follow the prompts (link to an existing project or create one).
-
-The `installCommand` in `vercel.json` runs `npm install` at the root and in `backend`, so `sqlite3` is built for Vercel’s Linux environment. If you see `Cannot find module 'sqlite3'` or a native-addon error in the Vercel logs, you can try [sql.js](https://github.com/sql-js/sql.js) (pure JS, no native bindings) as an alternative; the schema and queries would need to be adapted.
 
 ---
 
@@ -158,7 +156,7 @@ Once you have the basic app working, you can:
 - **JavaScript**: https://developer.mozilla.org/en-US/docs/Web/JavaScript
 - **Node.js**: https://nodejs.org/en/docs/
 - **Express**: https://expressjs.com/
-- **SQLite**: https://www.sqlite.org/docs.html
+- **Postgres**: https://www.postgresql.org/docs/
 
 ## Getting Help
 

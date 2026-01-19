@@ -1,107 +1,65 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+const { neon } = require('@neondatabase/serverless');
 
-// Database file path
-// On Vercel, the project filesystem is read-only; use /tmp (writable but ephemeral).
-const DB_PATH = process.env.VERCEL
-  ? path.join('/tmp', 'surf_tracker.db')
-  : path.join(__dirname, 'surf_tracker.db');
+let sqlClient = null;
 
-// Create and initialize database
-function initDatabase() {
-  return new Promise((resolve, reject) => {
-    const db = new sqlite3.Database(DB_PATH, (err) => {
-      if (err) {
-        console.error('Error opening database:', err.message);
-        reject(err);
-        return;
-      }
-      console.log('Connected to SQLite database');
-    });
-
-    // Create teams table first
-    db.run(`CREATE TABLE IF NOT EXISTS teams (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`, (err) => {
-      if (err) {
-        console.error('Error creating teams table:', err.message);
-        db.close();
-        reject(err);
-        return;
-      }
-      
-      // Create users table after teams table is created
-      // Check if users table exists first
-      db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", (err, row) => {
-        const tableExists = !!row;
-        
-        const continueWithSessions = () => {
-          // Create surf_sessions table after users table is created
-          db.run(`CREATE TABLE IF NOT EXISTS surf_sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            date DATE NOT NULL,
-            location TEXT,
-            notes TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id)
-          )`, (err) => {
-            if (err) {
-              console.error('Error creating surf_sessions table:', err.message);
-              db.close();
-              reject(err);
-              return;
-            }
-            console.log('Database tables initialized');
-            // Close the init connection so serverless invocations can finish.
-            db.close((closeErr) => {
-              if (closeErr) console.warn('Error closing init DB connection:', closeErr.message);
-              resolve();
-            });
-          });
-        };
-        
-        if (!tableExists) {
-          // Create users table with team_id from the start
-          db.run(`CREATE TABLE users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE,
-            team_id INTEGER,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (team_id) REFERENCES teams(id)
-          )`, (err) => {
-            if (err) {
-              console.error('Error creating users table:', err.message);
-              db.close();
-              reject(err);
-              return;
-            }
-            continueWithSessions();
-          });
-        } else {
-          // Table exists, try to add team_id column if it doesn't exist
-          db.run(`ALTER TABLE users ADD COLUMN team_id INTEGER`, (err) => {
-            // Ignore error if column already exists
-            if (err && !err.message.includes('duplicate column')) {
-              console.warn('Could not add team_id column:', err.message);
-            }
-            continueWithSessions();
-          });
-        }
-      });
-    });
-  });
+function getConnectionString() {
+  return (
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL_NO_SSL
+  );
 }
 
-// Get database connection
-function getDatabase() {
-  return new sqlite3.Database(DB_PATH);
+function getSql() {
+  if (!sqlClient) {
+    const connectionString = getConnectionString();
+    if (!connectionString) {
+      throw new Error(
+        'Missing Postgres connection string. Set POSTGRES_URL or DATABASE_URL in environment variables.'
+      );
+    }
+    sqlClient = neon(connectionString);
+  }
+  return sqlClient;
+}
+
+async function initDatabase() {
+  const sql = getSql();
+
+  // Create tables if they don't exist (safe to run repeatedly).
+  await sql`
+    CREATE TABLE IF NOT EXISTS teams (
+      id BIGSERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS users (
+      id BIGSERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE,
+      team_id BIGINT REFERENCES teams(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS surf_sessions (
+      id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT NOT NULL REFERENCES users(id),
+      date DATE NOT NULL,
+      location TEXT,
+      notes TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `;
 }
 
 module.exports = {
   initDatabase,
-  getDatabase
+  getSql,
 };

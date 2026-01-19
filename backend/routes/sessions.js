@@ -1,215 +1,151 @@
 const express = require('express');
 const router = express.Router();
-const { getDatabase } = require('../database');
+const { getSql } = require('../database');
 
 // GET all sessions (optionally filtered by user_id)
-router.get('/', (req, res) => {
-  const db = getDatabase();
-  const userId = req.query.user_id;
-  
-  let query = `
-    SELECT 
-      s.*,
-      u.name as user_name,
-      u.team_id,
-      t.name as team_name
-    FROM surf_sessions s
-    JOIN users u ON s.user_id = u.id
-    LEFT JOIN teams t ON u.team_id = t.id
-  `;
-  const params = [];
-  
-  if (userId) {
-    query += ' WHERE s.user_id = ?';
-    params.push(userId);
-  }
-  
-  query += ' ORDER BY s.date DESC, s.created_at DESC';
-  
-  db.all(query, params, (err, rows) => {
-    if (err) {
-      console.error('Error fetching sessions:', err.message);
-      res.status(500).json({ error: 'Failed to fetch sessions' });
-      db.close();
-      return;
-    }
-    res.json(rows);
-    db.close();
-  });
-});
+router.get('/', async (req, res) => {
+  const sql = getSql();
+  const userId = req.query.user_id ? Number(req.query.user_id) : null;
 
-// POST create a new surf session
-router.post('/', (req, res) => {
-  const db = getDatabase();
-  const { user_id, date, location, notes } = req.body;
-  
-  // Validate input
-  if (!user_id) {
-    res.status(400).json({ error: 'user_id is required' });
-    db.close();
-    return;
+  if (req.query.user_id && !userId) {
+    return res.status(400).json({ error: 'Invalid user_id' });
   }
-  
-  if (!date) {
-    res.status(400).json({ error: 'date is required' });
-    db.close();
-    return;
-  }
-  
-  // Verify user exists
-  db.get('SELECT id FROM users WHERE id = ?', [user_id], (err, user) => {
-    if (err) {
-      console.error('Error checking user:', err.message);
-      res.status(500).json({ error: 'Failed to validate user' });
-      db.close();
-      return;
-    }
-    
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      db.close();
-      return;
-    }
-    
-    // Insert session
-    db.run(
-      'INSERT INTO surf_sessions (user_id, date, location, notes) VALUES (?, ?, ?, ?)',
-      [user_id, date, location ? location.trim() : null, notes ? notes.trim() : null],
-      function(err) {
-        if (err) {
-          console.error('Error creating session:', err.message);
-          res.status(500).json({ error: 'Failed to create session' });
-          db.close();
-          return;
-        }
-        
-        // Return the created session with user name and team info
-        db.get(`
-          SELECT 
+
+  try {
+    const rows = userId
+      ? await sql`
+          SELECT
             s.*,
-            u.name as user_name,
+            u.name AS user_name,
             u.team_id,
-            t.name as team_name
+            t.name AS team_name
           FROM surf_sessions s
           JOIN users u ON s.user_id = u.id
           LEFT JOIN teams t ON u.team_id = t.id
-          WHERE s.id = ?
-        `, [this.lastID], (err, row) => {
-          if (err) {
-            console.error('Error fetching created session:', err.message);
-            res.status(500).json({ error: 'Session created but failed to fetch' });
-            db.close();
-            return;
-          }
-          res.status(201).json(row);
-          db.close();
-        });
-      }
-    );
-  });
+          WHERE s.user_id = ${userId}
+          ORDER BY s.date DESC, s.created_at DESC;
+        `
+      : await sql`
+          SELECT
+            s.*,
+            u.name AS user_name,
+            u.team_id,
+            t.name AS team_name
+          FROM surf_sessions s
+          JOIN users u ON s.user_id = u.id
+          LEFT JOIN teams t ON u.team_id = t.id
+          ORDER BY s.date DESC, s.created_at DESC;
+        `;
+
+    res.json(rows);
+  } catch (err) {
+    console.error('Error fetching sessions:', err);
+    res.status(500).json({ error: 'Failed to fetch sessions' });
+  }
+});
+
+// POST create a new surf session
+router.post('/', async (req, res) => {
+  const sql = getSql();
+  const { user_id, date, location, notes } = req.body;
+
+  if (!user_id) return res.status(400).json({ error: 'user_id is required' });
+  if (!date) return res.status(400).json({ error: 'date is required' });
+
+  const userId = Number(user_id);
+  if (!userId) return res.status(400).json({ error: 'Invalid user_id' });
+
+  const locationValue = location ? String(location).trim() : null;
+  const notesValue = notes ? String(notes).trim() : null;
+
+  try {
+    const userRows = await sql`SELECT id FROM users WHERE id = ${userId};`;
+    if (!userRows[0]) return res.status(404).json({ error: 'User not found' });
+
+    const rows = await sql`
+      WITH inserted AS (
+        INSERT INTO surf_sessions (user_id, date, location, notes)
+        VALUES (${userId}, ${date}, ${locationValue}, ${notesValue})
+        RETURNING *
+      )
+      SELECT
+        inserted.*,
+        u.name AS user_name,
+        u.team_id,
+        t.name AS team_name
+      FROM inserted
+      JOIN users u ON inserted.user_id = u.id
+      LEFT JOIN teams t ON u.team_id = t.id;
+    `;
+
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('Error creating session:', err);
+    res.status(500).json({ error: 'Failed to create session' });
+  }
 });
 
 // GET statistics for a specific user
-router.get('/stats/:userId', (req, res) => {
-  const db = getDatabase();
-  const userId = req.params.userId;
-  
-  // Verify user exists
-  db.get('SELECT id, name FROM users WHERE id = ?', [userId], (err, user) => {
-    if (err) {
-      console.error('Error checking user:', err.message);
-      res.status(500).json({ error: 'Failed to validate user' });
-      db.close();
-      return;
-    }
-    
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      db.close();
-      return;
-    }
-    
-    // Get total sessions
-    db.get(
-      'SELECT COUNT(*) as total FROM surf_sessions WHERE user_id = ?',
-      [userId],
-      (err, totalRow) => {
-        if (err) {
-          console.error('Error getting total sessions:', err.message);
-          res.status(500).json({ error: 'Failed to calculate statistics' });
-          db.close();
-          return;
-        }
-        
-        const now = new Date();
-        const currentMonth = now.getMonth() + 1;
-        const currentYear = now.getFullYear();
-        
-        // Get sessions this month
-        db.get(
-          `SELECT COUNT(*) as count 
-           FROM surf_sessions 
-           WHERE user_id = ? 
-           AND strftime('%Y', date) = ? 
-           AND strftime('%m', date) = ?`,
-          [userId, String(currentYear), String(currentMonth).padStart(2, '0')],
-          (err, monthRow) => {
-            if (err) {
-              console.error('Error getting monthly sessions:', err.message);
-              res.status(500).json({ error: 'Failed to calculate statistics' });
-              db.close();
-              return;
-            }
-            
-            // Get sessions this year
-            db.get(
-              `SELECT COUNT(*) as count 
-               FROM surf_sessions 
-               WHERE user_id = ? 
-               AND strftime('%Y', date) = ?`,
-              [userId, String(currentYear)],
-              (err, yearRow) => {
-                if (err) {
-                  console.error('Error getting yearly sessions:', err.message);
-                  res.status(500).json({ error: 'Failed to calculate statistics' });
-                  db.close();
-                  return;
-                }
-                
-                // Get user's team info
-                db.get(`
-                  SELECT 
-                    u.team_id,
-                    t.name as team_name
-                  FROM users u
-                  LEFT JOIN teams t ON u.team_id = t.id
-                  WHERE u.id = ?
-                `, [userId], (err, teamRow) => {
-                  if (err) {
-                    console.error('Error getting team info:', err.message);
-                    res.status(500).json({ error: 'Failed to calculate statistics' });
-                    db.close();
-                    return;
-                  }
-                  
-                  res.json({
-                    user_id: parseInt(userId),
-                    user_name: user.name,
-                    total_sessions: totalRow.total,
-                    sessions_this_month: monthRow.count,
-                    sessions_this_year: yearRow.count,
-                    team_id: teamRow ? teamRow.team_id : null,
-                    team_name: teamRow ? teamRow.team_name : null
-                  });
-                  db.close();
-                });
-              }
-            );
-          }
-        );
-      }
-    );
-  });
+router.get('/stats/:userId', async (req, res) => {
+  const sql = getSql();
+  const userId = Number(req.params.userId);
+
+  if (!userId) return res.status(400).json({ error: 'Invalid user id' });
+
+  try {
+    const userRows = await sql`
+      SELECT
+        u.id,
+        u.name,
+        u.team_id,
+        t.name AS team_name
+      FROM users u
+      LEFT JOIN teams t ON u.team_id = t.id
+      WHERE u.id = ${userId};
+    `;
+    const user = userRows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const statsRows = await sql`
+      SELECT
+        COALESCE(COUNT(*), 0)::int AS total_sessions,
+        COALESCE(
+          COUNT(*) FILTER (
+            WHERE date >= date_trunc('month', current_date)::date
+              AND date < (date_trunc('month', current_date) + interval '1 month')::date
+          ),
+          0
+        )::int AS sessions_this_month,
+        COALESCE(
+          COUNT(*) FILTER (
+            WHERE date >= date_trunc('year', current_date)::date
+              AND date < (date_trunc('year', current_date) + interval '1 year')::date
+          ),
+          0
+        )::int AS sessions_this_year
+      FROM surf_sessions
+      WHERE user_id = ${userId};
+    `;
+
+    const stats = statsRows[0] || {
+      total_sessions: 0,
+      sessions_this_month: 0,
+      sessions_this_year: 0,
+    };
+
+    res.json({
+      user_id: user.id,
+      user_name: user.name,
+      total_sessions: stats.total_sessions,
+      sessions_this_month: stats.sessions_this_month,
+      sessions_this_year: stats.sessions_this_year,
+      team_id: user.team_id,
+      team_name: user.team_name,
+    });
+  } catch (err) {
+    console.error('Error calculating user stats:', err);
+    res.status(500).json({ error: 'Failed to calculate statistics' });
+  }
 });
 
 module.exports = router;
