@@ -1,4 +1,3 @@
-const serverless = require('serverless-http');
 const { initDatabase } = require('../backend/database');
 
 let initPromise = null;
@@ -7,22 +6,22 @@ function ensureInit() {
   return initPromise;
 }
 
-let handler = null;
-function getHandler() {
-  if (!handler) {
+let app = null;
+function getApp() {
+  if (!app) {
     // Require server lazily so require-time errors become a JSON 500.
-    // server.js skips listen/init when VERCEL is set.
-    const app = require('../backend/server');
-    // Prevent open handles (e.g., sqlite connections) from blocking the response.
-    handler = serverless(app, { callbackWaitsForEmptyEventLoop: false });
+    // `backend/server.js` skips listen/init when VERCEL is set.
+    app = require('../backend/server');
   }
-  return handler;
+  return app;
 }
 
 module.exports = async (req, res) => {
   try {
     await ensureInit();
-    return await getHandler()(req, res);
+    // Vercel Node functions provide a Node-style (req, res).
+    // An Express app is already a request handler function with this signature.
+    return getApp()(req, res);
   } catch (err) {
     console.error('Unhandled API error:', err);
     res.statusCode = 500;
