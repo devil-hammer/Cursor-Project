@@ -17,9 +17,11 @@ router.get('/', (req, res) => {
     if (err) {
       console.error('Error fetching users:', err.message);
       res.status(500).json({ error: 'Failed to fetch users' });
+      db.close();
       return;
     }
     res.json(rows);
+    db.close();
   });
 });
 
@@ -39,15 +41,18 @@ router.get('/:id', (req, res) => {
     if (err) {
       console.error('Error fetching user:', err.message);
       res.status(500).json({ error: 'Failed to fetch user' });
+      db.close();
       return;
     }
     
     if (!row) {
       res.status(404).json({ error: 'User not found' });
+      db.close();
       return;
     }
     
     res.json(row);
+    db.close();
   });
 });
 
@@ -59,6 +64,7 @@ router.post('/', (req, res) => {
   // Validate input
   if (!name || name.trim() === '') {
     res.status(400).json({ error: 'Name is required' });
+    db.close();
     return;
   }
   
@@ -67,6 +73,7 @@ router.post('/', (req, res) => {
     db.get('SELECT id FROM teams WHERE id = ?', [team_id], (err, team) => {
       if (err || !team) {
         res.status(400).json({ error: 'Invalid team_id' });
+        db.close();
         return;
       }
       insertUser();
@@ -84,10 +91,12 @@ router.post('/', (req, res) => {
         if (err) {
           if (err.message.includes('UNIQUE constraint failed')) {
             res.status(400).json({ error: 'Email already exists' });
+            db.close();
             return;
           }
           console.error('Error creating user:', err.message);
           res.status(500).json({ error: 'Failed to create user' });
+          db.close();
           return;
         }
         
@@ -103,9 +112,11 @@ router.post('/', (req, res) => {
           if (err) {
             console.error('Error fetching created user:', err.message);
             res.status(500).json({ error: 'User created but failed to fetch' });
+            db.close();
             return;
           }
           res.status(201).json(row);
+          db.close();
         });
       }
     );
@@ -123,11 +134,13 @@ router.put('/:id/team', (req, res) => {
     if (err) {
       console.error('Error checking user:', err.message);
       res.status(500).json({ error: 'Failed to validate user' });
+      db.close();
       return;
     }
     
     if (!user) {
       res.status(404).json({ error: 'User not found' });
+      db.close();
       return;
     }
     
@@ -136,6 +149,7 @@ router.put('/:id/team', (req, res) => {
       db.get('SELECT id FROM teams WHERE id = ?', [team_id], (err, team) => {
         if (err || !team) {
           res.status(400).json({ error: 'Invalid team_id' });
+          db.close();
           return;
         }
         updateTeam();
@@ -153,6 +167,7 @@ router.put('/:id/team', (req, res) => {
           if (err) {
             console.error('Error updating user team:', err.message);
             res.status(500).json({ error: 'Failed to update user team' });
+            db.close();
             return;
           }
           
@@ -168,9 +183,11 @@ router.put('/:id/team', (req, res) => {
             if (err) {
               console.error('Error fetching updated user:', err.message);
               res.status(500).json({ error: 'User updated but failed to fetch' });
+              db.close();
               return;
             }
             res.json(row);
+            db.close();
           });
         }
       );

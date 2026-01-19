@@ -13,7 +13,8 @@ function getHandler() {
     // Require server lazily so require-time errors become a JSON 500.
     // server.js skips listen/init when VERCEL is set.
     const app = require('../backend/server');
-    handler = serverless(app);
+    // Prevent open handles (e.g., sqlite connections) from blocking the response.
+    handler = serverless(app, { callbackWaitsForEmptyEventLoop: false });
   }
   return handler;
 }
@@ -21,7 +22,7 @@ function getHandler() {
 module.exports = async (req, res) => {
   try {
     await ensureInit();
-    return getHandler()(req, res);
+    return await getHandler()(req, res);
   } catch (err) {
     console.error('Unhandled API error:', err);
     res.statusCode = 500;

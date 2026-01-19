@@ -55,7 +55,11 @@ function initDatabase() {
               return;
             }
             console.log('Database tables initialized');
-            resolve(db);
+            // Close the init connection so serverless invocations can finish.
+            db.close((closeErr) => {
+              if (closeErr) console.warn('Error closing init DB connection:', closeErr.message);
+              resolve();
+            });
           });
         };
         

@@ -30,9 +30,11 @@ router.get('/', (req, res) => {
     if (err) {
       console.error('Error fetching sessions:', err.message);
       res.status(500).json({ error: 'Failed to fetch sessions' });
+      db.close();
       return;
     }
     res.json(rows);
+    db.close();
   });
 });
 
@@ -44,11 +46,13 @@ router.post('/', (req, res) => {
   // Validate input
   if (!user_id) {
     res.status(400).json({ error: 'user_id is required' });
+    db.close();
     return;
   }
   
   if (!date) {
     res.status(400).json({ error: 'date is required' });
+    db.close();
     return;
   }
   
@@ -57,11 +61,13 @@ router.post('/', (req, res) => {
     if (err) {
       console.error('Error checking user:', err.message);
       res.status(500).json({ error: 'Failed to validate user' });
+      db.close();
       return;
     }
     
     if (!user) {
       res.status(404).json({ error: 'User not found' });
+      db.close();
       return;
     }
     
@@ -73,6 +79,7 @@ router.post('/', (req, res) => {
         if (err) {
           console.error('Error creating session:', err.message);
           res.status(500).json({ error: 'Failed to create session' });
+          db.close();
           return;
         }
         
@@ -91,9 +98,11 @@ router.post('/', (req, res) => {
           if (err) {
             console.error('Error fetching created session:', err.message);
             res.status(500).json({ error: 'Session created but failed to fetch' });
+            db.close();
             return;
           }
           res.status(201).json(row);
+          db.close();
         });
       }
     );
@@ -110,11 +119,13 @@ router.get('/stats/:userId', (req, res) => {
     if (err) {
       console.error('Error checking user:', err.message);
       res.status(500).json({ error: 'Failed to validate user' });
+      db.close();
       return;
     }
     
     if (!user) {
       res.status(404).json({ error: 'User not found' });
+      db.close();
       return;
     }
     
@@ -126,6 +137,7 @@ router.get('/stats/:userId', (req, res) => {
         if (err) {
           console.error('Error getting total sessions:', err.message);
           res.status(500).json({ error: 'Failed to calculate statistics' });
+          db.close();
           return;
         }
         
@@ -145,6 +157,7 @@ router.get('/stats/:userId', (req, res) => {
             if (err) {
               console.error('Error getting monthly sessions:', err.message);
               res.status(500).json({ error: 'Failed to calculate statistics' });
+              db.close();
               return;
             }
             
@@ -159,6 +172,7 @@ router.get('/stats/:userId', (req, res) => {
                 if (err) {
                   console.error('Error getting yearly sessions:', err.message);
                   res.status(500).json({ error: 'Failed to calculate statistics' });
+                  db.close();
                   return;
                 }
                 
@@ -174,6 +188,7 @@ router.get('/stats/:userId', (req, res) => {
                   if (err) {
                     console.error('Error getting team info:', err.message);
                     res.status(500).json({ error: 'Failed to calculate statistics' });
+                    db.close();
                     return;
                   }
                   
@@ -186,6 +201,7 @@ router.get('/stats/:userId', (req, res) => {
                     team_id: teamRow ? teamRow.team_id : null,
                     team_name: teamRow ? teamRow.team_name : null
                   });
+                  db.close();
                 });
               }
             );

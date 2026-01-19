@@ -10,9 +10,11 @@ router.get('/', (req, res) => {
     if (err) {
       console.error('Error fetching teams:', err.message);
       res.status(500).json({ error: 'Failed to fetch teams' });
+      db.close();
       return;
     }
     res.json(rows);
+    db.close();
   });
 });
 
@@ -25,15 +27,18 @@ router.get('/:id', (req, res) => {
     if (err) {
       console.error('Error fetching team:', err.message);
       res.status(500).json({ error: 'Failed to fetch team' });
+      db.close();
       return;
     }
     
     if (!row) {
       res.status(404).json({ error: 'Team not found' });
+      db.close();
       return;
     }
     
     res.json(row);
+    db.close();
   });
 });
 
@@ -45,6 +50,7 @@ router.post('/', (req, res) => {
   // Validate input
   if (!name || name.trim() === '') {
     res.status(400).json({ error: 'Team name is required' });
+    db.close();
     return;
   }
   
@@ -56,10 +62,12 @@ router.post('/', (req, res) => {
       if (err) {
         if (err.message.includes('UNIQUE constraint failed')) {
           res.status(400).json({ error: 'Team name already exists' });
+          db.close();
           return;
         }
         console.error('Error creating team:', err.message);
         res.status(500).json({ error: 'Failed to create team' });
+        db.close();
         return;
       }
       
@@ -68,9 +76,11 @@ router.post('/', (req, res) => {
         if (err) {
           console.error('Error fetching created team:', err.message);
           res.status(500).json({ error: 'Team created but failed to fetch' });
+          db.close();
           return;
         }
         res.status(201).json(row);
+        db.close();
       });
     }
   );
@@ -86,11 +96,13 @@ router.get('/stats/:teamId', (req, res) => {
     if (err) {
       console.error('Error checking team:', err.message);
       res.status(500).json({ error: 'Failed to validate team' });
+      db.close();
       return;
     }
     
     if (!team) {
       res.status(404).json({ error: 'Team not found' });
+      db.close();
       return;
     }
     
@@ -105,6 +117,7 @@ router.get('/stats/:teamId', (req, res) => {
         if (err) {
           console.error('Error getting total sessions:', err.message);
           res.status(500).json({ error: 'Failed to calculate statistics' });
+          db.close();
           return;
         }
         
@@ -125,6 +138,7 @@ router.get('/stats/:teamId', (req, res) => {
             if (err) {
               console.error('Error getting monthly sessions:', err.message);
               res.status(500).json({ error: 'Failed to calculate statistics' });
+              db.close();
               return;
             }
             
@@ -140,6 +154,7 @@ router.get('/stats/:teamId', (req, res) => {
                 if (err) {
                   console.error('Error getting yearly sessions:', err.message);
                   res.status(500).json({ error: 'Failed to calculate statistics' });
+                  db.close();
                   return;
                 }
                 
@@ -151,6 +166,7 @@ router.get('/stats/:teamId', (req, res) => {
                     if (err) {
                       console.error('Error getting team members:', err.message);
                       res.status(500).json({ error: 'Failed to calculate statistics' });
+                      db.close();
                       return;
                     }
                     
@@ -162,6 +178,7 @@ router.get('/stats/:teamId', (req, res) => {
                       sessions_this_year: yearRow.count,
                       member_count: membersRow.count
                     });
+                    db.close();
                   }
                 );
               }
@@ -182,6 +199,7 @@ router.get('/leaderboard/all', (req, res) => {
     if (err) {
       console.error('Error fetching teams:', err.message);
       res.status(500).json({ error: 'Failed to fetch teams' });
+      db.close();
       return;
     }
     
@@ -209,6 +227,7 @@ router.get('/leaderboard/all', (req, res) => {
       // Sort by total sessions descending
       teamsWithStats.sort((a, b) => b.total_sessions - a.total_sessions);
       res.json(teamsWithStats);
+      db.close();
     });
   });
 });
