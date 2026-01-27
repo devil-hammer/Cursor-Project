@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { getSql } = require('../database');
 
+const WHATSAPP_NOTIFIER_URL = process.env.WHATSAPP_NOTIFIER_URL || '';
+
 // GET all sessions (optionally filtered by user_id)
 router.get('/', async (req, res) => {
   const sql = getSql();
@@ -77,6 +79,20 @@ router.post('/', async (req, res) => {
       JOIN users u ON inserted.user_id = u.id
       LEFT JOIN teams t ON u.team_id = t.id;
     `;
+
+    if (WHATSAPP_NOTIFIER_URL) {
+      fetch(`${WHATSAPP_NOTIFIER_URL}/notify-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_name: rows[0].user_name,
+          date: rows[0].date,
+          location: rows[0].location,
+          notes: rows[0].notes,
+          team_name: rows[0].team_name,
+        }),
+      }).catch((err) => console.error('WhatsApp notify failed:', err));
+    }
 
     res.status(201).json(rows[0]);
   } catch (err) {
