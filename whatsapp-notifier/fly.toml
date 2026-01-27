@@ -12,6 +12,8 @@ primary_region = 'iad'
 [env]
   PORT = '3001'
   WHATSAPP_GROUP_NAME = 'Semi-kooks'
+  WHATSAPP_GROUP_ID = '61423185452-1418503698@g.us'
+  WHATSAPP_GROUP_INVITE_CODE = 'KPTHNilPFN82sxpIPWGzT7'
 
 [[mounts]]
   source = 'whatsapp_data'

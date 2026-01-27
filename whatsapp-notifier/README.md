@@ -72,6 +72,8 @@ Expect `whatsapp_ready: true` and `group_found: true` once linked and the group 
 | Variable | Description |
 |----------|-------------|
 | `PORT` | Server port (default `3001`) |
-| `WHATSAPP_GROUP_NAME` | WhatsApp group name to send to (default `Semi-kooks`) |
+| `WHATSAPP_GROUP_NAME` | WhatsApp group name (fallback when resolving by name) |
+| `WHATSAPP_GROUP_ID` | Use this group ID directly; skips lookup (e.g. `123456789@g.us`) |
+| `WHATSAPP_GROUP_INVITE_CODE` | Invite code or full link (e.g. `KPTH...` or `https://chat.whatsapp.com/KPTH...`). Used to resolve the group without `getChats`, avoiding timeouts. |
 | `WHATSAPP_AUTH_PATH` | Path for auth data (default `/data/.wwebjs_auth` on Fly) |
 | `PUPPETEER_EXECUTABLE_PATH` | Chromium path (set in Dockerfile for Fly) |
