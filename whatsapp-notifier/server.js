@@ -202,7 +202,7 @@ app.post('/notify-session', async (req, res) => {
   if (notes) message += `Notes: ${notes}\n`;
 
   try {
-    await client.sendMessage(groupId, message);
+    await client.sendMessage(groupId, message, { sendSeen: false });
     console.log('Message sent to WhatsApp group');
     res.json({ success: true, message: 'Notification sent' });
   } catch (error) {
