@@ -41,7 +41,7 @@ header h1 {
 }
 
 .brand-logo {
-    width: min(560px, 92vw);
+    width: min(448px, 74vw);
     height: auto;
     display: block;
     filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.25));
@@ -418,7 +418,7 @@ section h2 {
     }
 
     .brand-logo {
-        width: min(420px, 92vw);
+        width: min(336px, 74vw);
     }
 
     section {
