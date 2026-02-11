@@ -1,14 +1,15 @@
 # Surf Tracker
 
-A web application to track surfing sessions with your friends. Log your surf sessions, view statistics, and compete on the leaderboard!
+A web application to track surfing sessions with your friends. Log sessions, manage teams, view leaderboards, and see each surfer's projected end-of-year score.
 
 ## Features
 
-- Add users (you and your friends)
+- Team and user management via Admin page
 - Log surf sessions with date, location, and notes
-- View statistics (total sessions, monthly, yearly)
-- Leaderboard showing everyone's session counts
-- Filter sessions by user
+- Individual and team leaderboards
+- Projected score card (end-of-calendar-year projection based on current pace)
+- Session filtering and pagination
+- Optional WhatsApp notifications for newly logged sessions (via Fly.io notifier service)
 - Modern, responsive design
 
 ## Prerequisites
@@ -74,40 +75,48 @@ You have two options:
 
 ### Step 3: Use the App!
 
-1. **Add yourself as a user**: Fill in your name (and optionally email)
-2. **Add your friends**: Add them as users too
-3. **Log surf sessions**: Select a user, date, location, and add notes
-4. **View statistics**: Select a user and click "Load Stats"
-5. **Check the leaderboard**: See who's logged the most sessions!
+1. Open the dashboard (`frontend/index.html`) and go to **Admin Panel**
+2. Create teams, add users, and assign users to teams
+3. Return to dashboard and log surf sessions
+4. Select a user and click **Load Stats** to see their projected year-end score
+5. Check individual/team leaderboards and recent sessions
 
 ## Project Structure
 
 ```
 surf-tracker/
 ├── frontend/
-│   ├── index.html       # Main webpage
-│   ├── styles.css       # Styling
-│   └── app.js           # Frontend logic
+│   ├── index.html          # Dashboard
+│   ├── admin.html          # Team/user admin panel
+│   ├── styles.css          # Styling
+│   ├── app.js              # Frontend logic
+│   └── assets/             # Favicon + brand assets
 ├── backend/
-│   ├── server.js        # Express server
-│   ├── database.js      # Database setup
+│   ├── server.js           # Express server
+│   ├── database.js         # Postgres init/client
 │   ├── routes/
-│   │   ├── users.js     # User API endpoints
-│   │   └── sessions.js  # Session API endpoints
-│   └── package.json     # Dependencies
-└── README.md            # This file
+│   │   ├── teams.js        # Team APIs + leaderboard
+│   │   ├── users.js        # User APIs + assignment
+│   │   └── sessions.js     # Session APIs + user stats
+│   └── package.json
+├── api/
+│   └── index.js            # Vercel serverless entrypoint
+├── whatsapp-notifier/      # Optional Fly.io WhatsApp service
+└── README.md
 ```
 
 ## API Endpoints
 
-The backend provides these API endpoints:
+Key endpoints:
 
-- `GET /api/users` - Get all users
-- `POST /api/users` - Create a new user
-- `GET /api/users/:id` - Get a specific user
-- `GET /api/sessions` - Get all sessions (optionally filtered by `?user_id=X`)
-- `POST /api/sessions` - Create a new session
-- `GET /api/sessions/stats/:userId` - Get statistics for a user
+- `GET /api/health` - API health check
+- `GET /api/teams` / `POST /api/teams`
+- `GET /api/users` / `POST /api/users`
+- `PUT /api/users/:id/team` - Assign/remove team for a user
+- `GET /api/sessions` - List sessions (optional `?user_id=<id>`)
+- `POST /api/sessions` - Create a session
+- `GET /api/sessions/stats/:userId` - User stats used for projection + cards
+- `GET /api/teams/leaderboard/all` - Team leaderboard stats
 
 ## Troubleshooting
 
@@ -126,18 +135,38 @@ The backend provides these API endpoints:
 - This project uses **Postgres** (Neon / Vercel Postgres).
 - For local dev, ensure you have a Postgres connection string set (for example `POSTGRES_URL` or `DATABASE_URL`).
 
+### Favicon / logo not updating after deploy
+- Browsers cache icons and brand assets aggressively.
+- Hard refresh the page (`Cmd+Shift+R` on macOS) or clear site data for your domain.
+- If needed, open the site in a private window to verify latest assets.
+
+### iPhone "Add to Home Screen" uses old icon
+- iOS prefers an Apple touch icon, not just standard favicon links.
+- Add an explicit touch icon in your `<head>`, for example:
+  - `<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">`
+- Use a `180x180` PNG, then remove/re-add the Home Screen shortcut.
+
 ## Deploying to Vercel (Neon Postgres)
 
-The app is set up to run on Vercel using **Neon Postgres** (via the Vercel integration).
+The app is configured for Vercel + Neon Postgres.
 
-- **On Vercel**: connect a Neon Postgres database to your project. Vercel will inject environment variables like `POSTGRES_URL` / `DATABASE_URL`.
-- **Locally**: set `POSTGRES_URL` (or `DATABASE_URL`) in your environment before running the backend.
+- On Vercel, connect Neon to your project so `POSTGRES_URL` / `DATABASE_URL` are injected.
+- For local backend, set `POSTGRES_URL` (or `DATABASE_URL`) before running `node backend/server.js`.
 
-**Deploy:**
+**Deploy basics**
 
-1. Install the Vercel CLI: `npm i -g vercel`
-2. From the project root: `vercel`
-3. Follow the prompts (link to an existing project or create one).
+1. Install Vercel CLI: `npm i -g vercel`
+2. From project root: `vercel`
+3. Follow prompts and deploy
+
+## Optional: WhatsApp Notifications
+
+If you want new session messages in a WhatsApp group:
+
+1. Deploy `whatsapp-notifier/` to Fly.io (see `whatsapp-notifier/README.md`)
+2. In Vercel project settings, set:
+   - `WHATSAPP_NOTIFIER_URL=https://<your-fly-app>.fly.dev`
+3. Redeploy Vercel so the API picks up the environment variable
 
 ---
 

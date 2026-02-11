@@ -2,6 +2,12 @@
 
 Sends surf session notifications to a WhatsApp group when sessions are logged via the main Surf Tracker API.
 
+## What it does
+
+- Exposes `POST /notify-session` to send a message to WhatsApp
+- Maintains a persistent WhatsApp Web login session on Fly volume storage
+- Provides `GET /health` for readiness checks
+
 ## Deploy to Fly.io
 
 ### 1. Install Fly CLI
@@ -39,7 +45,7 @@ fly launch
 1. Run `fly logs` and watch for the QR code.
 2. Open WhatsApp → Settings → Linked Devices → Link a Device.
 3. Scan the QR from the logs.
-4. The app will find the **Semi-kooks** group and start accepting notifications.
+4. Once ready, the app resolves the target group and starts accepting notifications.
 
 ### 6. Get your notifier URL
 
@@ -59,6 +65,16 @@ In Vercel → Project → Settings → Environment Variables, add:
 
 Redeploy the main app so the API uses this variable.
 
+## Test a manual notification
+
+This sends a WhatsApp message only (it does **not** write to your Surf Tracker DB):
+
+```bash
+curl -s -X POST https://surf-tracker-whatsapp-notifier.fly.dev/notify-session \
+  -H "Content-Type: application/json" \
+  -d '{"user_name":"Test User","location":"Test Break","notes":"Test ping","team_name":"The North"}'
+```
+
 ## Health check
 
 ```bash
@@ -66,6 +82,18 @@ curl https://surf-tracker-whatsapp-notifier.fly.dev/health
 ```
 
 Expect `whatsapp_ready: true` and `group_found: true` once linked and the group is detected.
+
+## Troubleshooting
+
+- `whatsapp_ready: false`:
+  - Wait ~30-60s after deploy and check logs again.
+  - If needed, re-link device from WhatsApp mobile app.
+- `group_found: false`:
+  - Confirm `WHATSAPP_GROUP_ID` (preferred) or group name/invite values.
+  - Check app logs for group resolution errors/timeouts.
+- Notifications fail from main app but manual notifier test works:
+  - Confirm `WHATSAPP_NOTIFIER_URL` is set in Vercel.
+  - Redeploy Vercel after changing env vars.
 
 ## Environment variables
 
