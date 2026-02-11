@@ -501,20 +501,50 @@ async function loadStats() {
 
 // Display Statistics
 function displayStats(stats) {
+    const sessionsThisYear = Number(stats.sessions_this_year) || 0;
+    const { year, dayOfYear, daysInYear, daysRemaining } = getCalendarYearProgress();
+    const projectedYearEndTotal = calculateYearEndProjection(sessionsThisYear, dayOfYear, daysInYear);
+
     statsContainer.innerHTML = `
         <div class="stat-card">
-            <div class="stat-value">${stats.total_sessions}</div>
-            <div class="stat-label">Total Sessions</div>
+            <div class="stat-value">${projectedYearEndTotal}</div>
+            <div class="stat-label">Projected ${year} Total</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value">${stats.sessions_this_month}</div>
-            <div class="stat-label">This Month</div>
+            <div class="stat-value">${sessionsThisYear}</div>
+            <div class="stat-label">Sessions This Year</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value">${stats.sessions_this_year}</div>
-            <div class="stat-label">This Year</div>
+            <div class="stat-value">${daysRemaining}</div>
+            <div class="stat-label">Days Remaining</div>
         </div>
     `;
+}
+
+function getCalendarYearProgress() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const startOfYear = new Date(year, 0, 1);
+    const startOfNextYear = new Date(year + 1, 0, 1);
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const dayOfYear = Math.floor((now - startOfYear) / msPerDay) + 1;
+    const daysInYear = Math.floor((startOfNextYear - startOfYear) / msPerDay);
+
+    return {
+        year,
+        dayOfYear,
+        daysInYear,
+        daysRemaining: Math.max(daysInYear - dayOfYear, 0)
+    };
+}
+
+function calculateYearEndProjection(sessionsThisYear, dayOfYear, daysInYear) {
+    if (!sessionsThisYear || dayOfYear <= 0 || daysInYear <= 0) {
+        return 0;
+    }
+
+    const sessionsPerDay = sessionsThisYear / dayOfYear;
+    return Math.round(sessionsPerDay * daysInYear);
 }
 
 // Load Leaderboard
