@@ -607,9 +607,10 @@ function displayLeaderboard(leaderboard) {
     leaderboardContainer.innerHTML = leaderboard.map((item, index) => {
         const rank = index + 1;
         const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
+        const woodenSpoon = rank === leaderboard.length && leaderboard.length > 1 ? ' 🥄' : '';
         return `
             <div class="leaderboard-item">
-                <span class="rank">${rank}${medal ? ' ' + medal : ''}</span>
+                <span class="rank">${rank}${medal ? ' ' + medal : ''}${woodenSpoon}</span>
                 <span class="name">${escapeHtml(item.name)}</span>
                 <span class="count">${item.total} session${item.total !== 1 ? 's' : ''}</span>
             </div>
