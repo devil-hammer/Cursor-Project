@@ -39,6 +39,28 @@ let isProcessingQueue = false;
 let isReinitializing = false;
 let consecutiveSendFailures = 0;
 
+async function isClientSendReady() {
+  if (!client) return false;
+  if (isReady) return true;
+  if (!isAuthenticated) return false;
+
+  try {
+    const state = await client.getState();
+    lastClientState = String(state || 'unknown');
+    if (state === 'CONNECTED') {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run4',hypothesisId:'L',location:'whatsapp-notifier/server.js:47',message:'Promoting ready from CONNECTED runtime state',data:{isAuthenticated,groupId:!!groupId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      isReady = true;
+      return true;
+    }
+    return false;
+  } catch (err) {
+    lastClientState = `error:${err?.message || 'unknown'}`;
+    return false;
+  }
+}
+
 async function doInit(retryCount = 0) {
   // #region agent log
   fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run2',hypothesisId:'F',location:'whatsapp-notifier/server.js:41',message:'doInit entered',data:{retryCount,hadClient:!!client},timestamp:Date.now()})}).catch(()=>{});
@@ -54,7 +76,7 @@ async function doInit(retryCount = 0) {
   isReady = false;
   isAuthenticated = false;
   lastClientState = 'initializing';
-  groupId = null;
+  groupId = GROUP_ID ? GROUP_ID.trim() : null;
 
   const puppeteerArgs = [
     '--no-sandbox',
@@ -118,7 +140,6 @@ async function doInit(retryCount = 0) {
 
     try {
       if (GROUP_ID) {
-        groupId = GROUP_ID.trim();
         console.log(`Using group ID from config: ${groupId}`);
         return;
       }
@@ -164,6 +185,9 @@ async function doInit(retryCount = 0) {
       .getState()
       .then((state) => {
         console.log('WhatsApp state after authenticated:', state);
+        if (state === 'CONNECTED') {
+          isReady = true;
+        }
       })
       .catch((err) => {
         console.log('Failed to read WhatsApp state after authenticated:', err?.message || err);
@@ -189,6 +213,9 @@ async function doInit(retryCount = 0) {
   client.on('change_state', (state) => {
     lastClientState = String(state || 'unknown');
     console.log('WhatsApp state changed:', state);
+    if (state === 'CONNECTED') {
+      isReady = true;
+    }
   });
 
   client.on('loading_screen', (percent, message) => {
@@ -238,7 +265,7 @@ async function sendWithRetry(targetGroupId, message) {
 
   for (let attempt = 1; attempt <= MAX_SEND_ATTEMPTS; attempt += 1) {
     try {
-      if (!isReady || !client) {
+      if (!client) {
         throw new Error('WhatsApp client not ready');
       }
       await client.sendMessage(targetGroupId, message, { sendSeen: false });
@@ -310,7 +337,8 @@ async function processNotificationQueue() {
       if (!job) continue;
 
       try {
-        if (!isReady || !groupId) {
+        const canSend = await isClientSendReady();
+        if (!canSend || !groupId) {
           throw new Error('WhatsApp not ready or group not found');
         }
         await sendWithRetry(groupId, job.message);
@@ -327,19 +355,21 @@ async function processNotificationQueue() {
 
 app.get('/health', async (req, res) => {
   let runtimeState = null;
-  if (client && isAuthenticated) {
+  if (client) {
     try {
       runtimeState = await client.getState();
+      lastClientState = String(runtimeState || lastClientState);
     } catch (err) {
       runtimeState = `error:${err?.message || 'unknown'}`;
     }
   }
+  const effectiveReady = isReady || (isAuthenticated && runtimeState === 'CONNECTED');
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run3',hypothesisId:'K',location:'whatsapp-notifier/server.js:311',message:'Health route hit with runtime state',data:{isReady,groupFound:!!groupId,isAuthenticated,lastClientState,runtimeState},timestamp:Date.now()})}).catch(()=>{});
+  fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run4',hypothesisId:'M',location:'whatsapp-notifier/server.js:344',message:'Health route hit with effective readiness',data:{isReady,effectiveReady,groupFound:!!groupId,isAuthenticated,lastClientState,runtimeState},timestamp:Date.now()})}).catch(()=>{});
   // #endregion
   res.json({
     status: 'OK',
-    whatsapp_ready: isReady,
+    whatsapp_ready: effectiveReady,
     group_found: !!groupId,
     authenticated: isAuthenticated,
     state: lastClientState,
@@ -376,10 +406,11 @@ app.get('/debug-groups', async (req, res) => {
 });
 
 app.post('/notify-session', async (req, res) => {
-  if (!isReady || !groupId) {
+  const canSend = await isClientSendReady();
+  if (!canSend || !groupId) {
     return res.status(503).json({
       error: 'WhatsApp not ready or group not found',
-      ready: isReady,
+      ready: canSend,
       groupId: !!groupId,
     });
   }
