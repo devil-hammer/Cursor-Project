@@ -32,6 +32,8 @@ const MAX_QUEUE_SIZE = 200;
 let client = null;
 let groupId = null;
 let isReady = false;
+let isAuthenticated = false;
+let lastClientState = 'unknown';
 let sendQueue = [];
 let isProcessingQueue = false;
 let isReinitializing = false;
@@ -50,6 +52,8 @@ async function doInit(retryCount = 0) {
     client = null;
   }
   isReady = false;
+  isAuthenticated = false;
+  lastClientState = 'initializing';
   groupId = null;
 
   const puppeteerArgs = [
@@ -92,6 +96,7 @@ async function doInit(retryCount = 0) {
     // #endregion
     console.log('WhatsApp client is ready!');
     isReady = true;
+    lastClientState = 'READY';
 
     if (client.pupPage && typeof client.pupPage.setDefaultTimeout === 'function') {
       client.pupPage.setDefaultTimeout(PAGE_TIMEOUT_MS);
@@ -153,10 +158,14 @@ async function doInit(retryCount = 0) {
 
   client.on('authenticated', () => {
     console.log('WhatsApp authenticated');
+    isAuthenticated = true;
+    console.log('WhatsApp auth status updated', { isAuthenticated, isReady, groupId: !!groupId });
   });
 
   client.on('auth_failure', (msg) => {
     console.error('WhatsApp authentication failed:', msg);
+    isAuthenticated = false;
+    lastClientState = 'AUTH_FAILURE';
   });
 
   client.on('disconnected', (reason) => {
@@ -165,6 +174,17 @@ async function doInit(retryCount = 0) {
     // #endregion
     console.log('WhatsApp client disconnected:', reason);
     isReady = false;
+    isAuthenticated = false;
+    lastClientState = String(reason || 'DISCONNECTED');
+  });
+
+  client.on('change_state', (state) => {
+    lastClientState = String(state || 'unknown');
+    console.log('WhatsApp state changed:', state);
+  });
+
+  client.on('loading_screen', (percent, message) => {
+    console.log('WhatsApp loading screen:', { percent, message });
   });
 
   try {
@@ -305,6 +325,8 @@ app.get('/health', (req, res) => {
     status: 'OK',
     whatsapp_ready: isReady,
     group_found: !!groupId,
+    authenticated: isAuthenticated,
+    state: lastClientState,
   });
 });
 
