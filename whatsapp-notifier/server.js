@@ -5,6 +5,13 @@ const qrcode = require('qrcode-terminal');
 const app = express();
 app.use(express.json());
 
+app.use((req, res, next) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run1',hypothesisId:'A',location:'whatsapp-notifier/server.js:9',message:'Incoming HTTP request',data:{method:req.method,path:req.path},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  next();
+});
+
 const PORT = process.env.PORT || 3001;
 const GROUP_NAME = process.env.WHATSAPP_GROUP_NAME || 'Semi-kooks';
 const GROUP_ID = process.env.WHATSAPP_GROUP_ID || null;
@@ -276,10 +283,25 @@ async function processNotificationQueue() {
 }
 
 app.get('/health', (req, res) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run1',hypothesisId:'B',location:'whatsapp-notifier/server.js:174',message:'Health route hit',data:{isReady,groupFound:!!groupId},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   res.json({
     status: 'OK',
     whatsapp_ready: isReady,
     group_found: !!groupId,
+  });
+});
+
+app.get('/', (req, res) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run1',hypothesisId:'E',location:'whatsapp-notifier/server.js:184',message:'Root route hit',data:{isReady,groupFound:!!groupId},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  res.json({
+    status: 'OK',
+    service: 'whatsapp-notifier',
+    health: '/health',
+    notify: '/notify-session',
   });
 });
 
@@ -329,7 +351,17 @@ app.post('/notify-session', async (req, res) => {
   }
 });
 
+app.use((req, res) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run1',hypothesisId:'C',location:'whatsapp-notifier/server.js:283',message:'Unmatched route (404)',data:{method:req.method,path:req.path},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  res.status(404).json({ error: 'Not found' });
+});
+
 app.listen(Number(PORT), '0.0.0.0', () => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run1',hypothesisId:'D',location:'whatsapp-notifier/server.js:290',message:'Notifier server started',data:{port:Number(PORT)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   console.log(`WhatsApp notifier server running on port ${PORT}`);
   initWhatsApp();
 });
