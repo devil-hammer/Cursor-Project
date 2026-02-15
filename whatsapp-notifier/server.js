@@ -17,10 +17,18 @@ const INVITE_CODE = (() => {
 const MAX_INIT_RETRIES = 4;
 const INIT_RETRY_DELAY_MS = 20000;
 const PAGE_TIMEOUT_MS = 300000;
+const MAX_SEND_ATTEMPTS = 3;
+const SEND_BACKOFF_MS = [2000, 5000, 10000];
+const MAX_CONSECUTIVE_SEND_FAILURES = 3;
+const MAX_QUEUE_SIZE = 200;
 
 let client = null;
 let groupId = null;
 let isReady = false;
+let sendQueue = [];
+let isProcessingQueue = false;
+let isReinitializing = false;
+let consecutiveSendFailures = 0;
 
 async function doInit(retryCount = 0) {
   if (client) {
@@ -160,6 +168,113 @@ function initWhatsApp() {
   });
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientSendError(error) {
+  const msg = String(error?.message || '').toLowerCase();
+  return (
+    msg.includes('timed out') ||
+    msg.includes('execution context was destroyed') ||
+    msg.includes('protocolerror') ||
+    msg.includes('target closed') ||
+    msg.includes('session closed')
+  );
+}
+
+async function sendWithRetry(targetGroupId, message) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= MAX_SEND_ATTEMPTS; attempt += 1) {
+    try {
+      if (!isReady || !client) {
+        throw new Error('WhatsApp client not ready');
+      }
+      await client.sendMessage(targetGroupId, message, { sendSeen: false });
+      consecutiveSendFailures = 0;
+      return;
+    } catch (error) {
+      lastError = error;
+      const isTransient = isTransientSendError(error);
+      const hasMoreAttempts = attempt < MAX_SEND_ATTEMPTS;
+
+      if (isTransient && hasMoreAttempts) {
+        const backoff = SEND_BACKOFF_MS[Math.min(attempt - 1, SEND_BACKOFF_MS.length - 1)];
+        const jitter = Math.floor(Math.random() * 300);
+        console.warn(`Send attempt ${attempt} failed (${error.message}). Retrying in ${backoff + jitter}ms...`);
+        await sleep(backoff + jitter);
+        continue;
+      }
+
+      break;
+    }
+  }
+
+  consecutiveSendFailures += 1;
+  throw lastError;
+}
+
+async function maybeReinitializeAfterSendFailures(error) {
+  if (!isTransientSendError(error)) return;
+  if (consecutiveSendFailures < MAX_CONSECUTIVE_SEND_FAILURES) return;
+  if (isReinitializing) return;
+
+  isReinitializing = true;
+  console.warn(
+    `Detected ${consecutiveSendFailures} consecutive transient send failures. Re-initializing WhatsApp client...`
+  );
+
+  try {
+    await doInit(0);
+    consecutiveSendFailures = 0;
+  } catch (reinitErr) {
+    console.error('Re-initialization after send failures failed:', reinitErr);
+  } finally {
+    isReinitializing = false;
+  }
+}
+
+function enqueueNotification(message) {
+  if (sendQueue.length >= MAX_QUEUE_SIZE) {
+    const queueError = new Error('Notifier queue is full. Please retry shortly.');
+    queueError.statusCode = 503;
+    return Promise.reject(queueError);
+  }
+
+  return new Promise((resolve, reject) => {
+    sendQueue.push({ message, resolve, reject, queuedAt: Date.now() });
+    processNotificationQueue().catch((err) => {
+      console.error('Queue processing error:', err);
+    });
+  });
+}
+
+async function processNotificationQueue() {
+  if (isProcessingQueue) return;
+  isProcessingQueue = true;
+
+  try {
+    while (sendQueue.length > 0) {
+      const job = sendQueue.shift();
+      if (!job) continue;
+
+      try {
+        if (!isReady || !groupId) {
+          throw new Error('WhatsApp not ready or group not found');
+        }
+        await sendWithRetry(groupId, job.message);
+        job.resolve();
+      } catch (error) {
+        await maybeReinitializeAfterSendFailures(error);
+        job.reject(error);
+      }
+    }
+  } finally {
+    isProcessingQueue = false;
+  }
+}
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'OK',
@@ -202,12 +317,12 @@ app.post('/notify-session', async (req, res) => {
   if (notes) message += `Notes: ${notes}\n`;
 
   try {
-    await client.sendMessage(groupId, message, { sendSeen: false });
+    await enqueueNotification(message);
     console.log('Message sent to WhatsApp group');
     res.json({ success: true, message: 'Notification sent' });
   } catch (error) {
     console.error('Error sending WhatsApp message:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       error: 'Failed to send notification',
       details: error.message,
     });
