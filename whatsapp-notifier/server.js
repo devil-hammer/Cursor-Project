@@ -38,6 +38,9 @@ let isReinitializing = false;
 let consecutiveSendFailures = 0;
 
 async function doInit(retryCount = 0) {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run2',hypothesisId:'F',location:'whatsapp-notifier/server.js:41',message:'doInit entered',data:{retryCount,hadClient:!!client},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   if (client) {
     try {
       await client.destroy();
@@ -74,6 +77,9 @@ async function doInit(retryCount = 0) {
   });
 
   client.on('qr', (qr) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run2',hypothesisId:'G',location:'whatsapp-notifier/server.js:78',message:'QR event emitted',data:{qrLength:qr ? qr.length : 0},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     console.log('QR Code received, scan with your phone:');
     qrcode.generate(qr, { small: true });
   });
@@ -81,6 +87,9 @@ async function doInit(retryCount = 0) {
   const target = GROUP_NAME.trim().toLowerCase();
 
   client.on('ready', async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run2',hypothesisId:'H',location:'whatsapp-notifier/server.js:86',message:'Ready event emitted',data:{groupIdConfigured:!!GROUP_ID,inviteConfigured:!!INVITE_CODE},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     console.log('WhatsApp client is ready!');
     isReady = true;
 
@@ -151,11 +160,17 @@ async function doInit(retryCount = 0) {
   });
 
   client.on('disconnected', (reason) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run2',hypothesisId:'I',location:'whatsapp-notifier/server.js:157',message:'Disconnected event emitted',data:{reason:String(reason || '')},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     console.log('WhatsApp client disconnected:', reason);
     isReady = false;
   });
 
   try {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run2',hypothesisId:'J',location:'whatsapp-notifier/server.js:163',message:'Calling client.initialize',data:{retryCount},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     await client.initialize();
   } catch (err) {
     console.error('WhatsApp init error:', err.message);
