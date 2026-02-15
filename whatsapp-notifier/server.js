@@ -160,6 +160,14 @@ async function doInit(retryCount = 0) {
     console.log('WhatsApp authenticated');
     isAuthenticated = true;
     console.log('WhatsApp auth status updated', { isAuthenticated, isReady, groupId: !!groupId });
+    client
+      .getState()
+      .then((state) => {
+        console.log('WhatsApp state after authenticated:', state);
+      })
+      .catch((err) => {
+        console.log('Failed to read WhatsApp state after authenticated:', err?.message || err);
+      });
   });
 
   client.on('auth_failure', (msg) => {
@@ -317,9 +325,17 @@ async function processNotificationQueue() {
   }
 }
 
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
+  let runtimeState = null;
+  if (client && isAuthenticated) {
+    try {
+      runtimeState = await client.getState();
+    } catch (err) {
+      runtimeState = `error:${err?.message || 'unknown'}`;
+    }
+  }
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run1',hypothesisId:'B',location:'whatsapp-notifier/server.js:174',message:'Health route hit',data:{isReady,groupFound:!!groupId},timestamp:Date.now()})}).catch(()=>{});
+  fetch('http://127.0.0.1:7242/ingest/3c4fecb4-2ae1-4496-aed3-7e149927a15a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'run3',hypothesisId:'K',location:'whatsapp-notifier/server.js:311',message:'Health route hit with runtime state',data:{isReady,groupFound:!!groupId,isAuthenticated,lastClientState,runtimeState},timestamp:Date.now()})}).catch(()=>{});
   // #endregion
   res.json({
     status: 'OK',
@@ -327,6 +343,7 @@ app.get('/health', (req, res) => {
     group_found: !!groupId,
     authenticated: isAuthenticated,
     state: lastClientState,
+    runtime_state: runtimeState,
   });
 });
 
