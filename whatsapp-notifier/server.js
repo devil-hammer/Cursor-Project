@@ -28,6 +28,7 @@ const MAX_SEND_ATTEMPTS = 3;
 const SEND_BACKOFF_MS = [2000, 5000, 10000];
 const MAX_CONSECUTIVE_SEND_FAILURES = 3;
 const MAX_QUEUE_SIZE = 200;
+const RESTART_ON_FATAL = process.env.RESTART_ON_FATAL !== 'false';
 
 let client = null;
 let groupId = null;
@@ -38,6 +39,26 @@ let sendQueue = [];
 let isProcessingQueue = false;
 let isReinitializing = false;
 let consecutiveSendFailures = 0;
+let restartScheduled = false;
+
+function restartProcess(reason, delayMs = 5000) {
+  if (!RESTART_ON_FATAL || restartScheduled) return;
+  restartScheduled = true;
+
+  console.error(`Fatal WhatsApp failure, restarting process in ${delayMs}ms: ${reason}`);
+
+  setTimeout(async () => {
+    try {
+      if (client) {
+        await client.destroy();
+      }
+    } catch (err) {
+      console.error('Error destroying client before restart:', err?.message || err);
+    } finally {
+      process.exit(1);
+    }
+  }, delayMs);
+}
 
 async function isClientSendReady() {
   if (!client) return false;
@@ -208,6 +229,7 @@ async function doInit(retryCount = 0) {
     isReady = false;
     isAuthenticated = false;
     lastClientState = String(reason || 'DISCONNECTED');
+    restartProcess(`disconnected: ${lastClientState}`);
   });
 
   client.on('change_state', (state) => {
@@ -235,7 +257,9 @@ async function doInit(retryCount = 0) {
       await new Promise((r) => setTimeout(r, INIT_RETRY_DELAY_MS));
       return doInit(retryCount + 1);
     }
-    console.error('WhatsApp init failed. Server will keep running; /health will show whatsapp_ready: false.');
+    console.error('WhatsApp init failed permanently, forcing restart.');
+    restartProcess(`init failed: ${err.message}`, 1000);
+    return;
   }
 }
 
