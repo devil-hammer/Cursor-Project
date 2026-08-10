@@ -2,7 +2,16 @@ const express = require('express');
 const router = express.Router();
 const { getSql } = require('../database');
 
-const WHATSAPP_NOTIFIER_URL = process.env.WHATSAPP_NOTIFIER_URL || '';
+const WHATSAPP_NOTIFICATIONS_ENABLED = process.env.WHATSAPP_NOTIFICATIONS_ENABLED !== 'false';
+
+function formatSessionNotification(session) {
+  let message = '🏄 Surf session logged\n\n';
+  message += `Surfer: ${session.user_name}\n`;
+  if (session.location) message += `Location: ${session.location}\n`;
+  if (session.team_name) message += `Team: ${session.team_name}\n`;
+  if (session.notes) message += `Notes: ${session.notes}\n`;
+  return message;
+}
 
 // GET all sessions (optionally filtered by user_id)
 router.get('/', async (req, res) => {
@@ -80,18 +89,16 @@ router.post('/', async (req, res) => {
       LEFT JOIN teams t ON u.team_id = t.id;
     `;
 
-    if (WHATSAPP_NOTIFIER_URL) {
-      fetch(`${WHATSAPP_NOTIFIER_URL}/notify-session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_name: rows[0].user_name,
-          date: rows[0].date,
-          location: rows[0].location,
-          notes: rows[0].notes,
-          team_name: rows[0].team_name,
-        }),
-      }).catch((err) => console.error('WhatsApp notify failed:', err));
+    if (WHATSAPP_NOTIFICATIONS_ENABLED) {
+      try {
+        await sql`
+          INSERT INTO whatsapp_notification_outbox (session_id, message)
+          VALUES (${rows[0].id}, ${formatSessionNotification(rows[0])})
+          ON CONFLICT (session_id) DO NOTHING;
+        `;
+      } catch (notifyErr) {
+        console.error('Failed to enqueue WhatsApp notification:', notifyErr);
+      }
     }
 
     res.status(201).json(rows[0]);

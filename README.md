@@ -164,9 +164,11 @@ The app is configured for Vercel + Neon Postgres.
 If you want new session messages in a WhatsApp group:
 
 1. Deploy `whatsapp-notifier/` to Fly.io (see `whatsapp-notifier/README.md`)
-2. In Vercel project settings, set:
-   - `WHATSAPP_NOTIFIER_URL=https://<your-fly-app>.fly.dev`
-3. Redeploy Vercel so the API picks up the environment variable
+2. Set `POSTGRES_URL` as a Fly secret on the notifier app
+3. Add `FLY_API_TOKEN` to GitHub repo secrets so the scheduled outbox processor can run
+4. Redeploy Vercel so the API creates outbox rows when sessions are logged
+
+Notifications are queued in Postgres and sent every ~10 minutes by a short-lived Fly job.
 
 ---
 
