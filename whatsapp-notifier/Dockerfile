@@ -31,6 +31,4 @@ COPY . .
 
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-EXPOSE 3001
-
-CMD ["npm", "start"]
+CMD ["node", "process-outbox.js"]

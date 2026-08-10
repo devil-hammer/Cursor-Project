@@ -1,107 +1,123 @@
 # WhatsApp Notifier (Surf Tracker)
 
-Sends surf session notifications to a WhatsApp group when sessions are logged via the main Surf Tracker API.
+Sends surf session notifications to a WhatsApp group using a **DB outbox + short-lived sender** model.
 
-## What it does
+## How it works
 
-- Exposes `POST /notify-session` to send a message to WhatsApp
-- Maintains a persistent WhatsApp Web login session on Fly volume storage
-- Provides `GET /health` for readiness checks
+1. When a surf session is created, the main API writes a row to `whatsapp_notification_outbox` in Postgres.
+2. A GitHub Actions workflow runs every 10 minutes.
+3. Each run starts a short-lived Fly machine that:
+   - reads pending outbox rows
+   - starts Chromium/WhatsApp only if there is work to send
+   - sends messages
+   - exits and releases memory
+
+This avoids keeping Chromium running 24/7.
 
 ## Deploy to Fly.io
 
-### 1. Install Fly CLI
+### 1. Install Fly CLI and login
 
 ```bash
-# macOS
 curl -L https://fly.io/install.sh | sh
-# or: brew install flyctl
-```
-
-### 2. Login
-
-```bash
 fly auth login
 ```
 
-### 3. Create persistent volume (for WhatsApp session)
+### 2. Create persistent volume (WhatsApp session)
 
 ```bash
 cd whatsapp-notifier
 fly volumes create whatsapp_data --size 1 --region iad
 ```
 
-### 4. Deploy
+### 3. Set secrets on Fly
+
+The outbox processor needs the same Postgres connection string as your main API:
 
 ```bash
-fly launch
+fly secrets set POSTGRES_URL='your-neon-connection-string' -a surf-tracker-whatsapp-notifier
 ```
 
-- Use app name `surf-tracker-whatsapp-notifier` (or your choice).
-- Say **no** to Postgres and Redis.
-
-### 5. First-time setup: scan QR code
-
-1. Run `fly logs` and watch for the QR code.
-2. Open WhatsApp → Settings → Linked Devices → Link a Device.
-3. Scan the QR from the logs.
-4. Once ready, the app resolves the target group and starts accepting notifications.
-
-### 6. Get your notifier URL
-
-After deploy, your app URL is something like:
-
-```
-https://surf-tracker-whatsapp-notifier.fly.dev
-```
-
-### 7. Configure main Surf Tracker API (Vercel)
-
-In Vercel → Project → Settings → Environment Variables, add:
-
-- **Name:** `WHATSAPP_NOTIFIER_URL`
-- **Value:** `https://surf-tracker-whatsapp-notifier.fly.dev` (your Fly URL)
-- **Environment:** Production (and Preview if you want)
-
-Redeploy the main app so the API uses this variable.
-
-## Test a manual notification
-
-This sends a WhatsApp message only (it does **not** write to your Surf Tracker DB):
+### 4. Deploy the image
 
 ```bash
-curl -s -X POST https://surf-tracker-whatsapp-notifier.fly.dev/notify-session \
-  -H "Content-Type: application/json" \
-  -d '{"user_name":"Test User","location":"Test Break","notes":"Test ping","team_name":"The North"}'
+fly deploy
 ```
 
-## Health check
+### 5. Stop any old always-on machine
+
+If you previously ran the old HTTP notifier, destroy or stop the existing machine so the volume is free for scheduled runs:
 
 ```bash
-curl https://surf-tracker-whatsapp-notifier.fly.dev/health
+fly machines list -a surf-tracker-whatsapp-notifier
+fly machine destroy <machine-id> -a surf-tracker-whatsapp-notifier
 ```
 
-Expect `whatsapp_ready: true` and `group_found: true` once linked and the group is detected.
+### 6. First-time WhatsApp linking
 
-## Troubleshooting
+Run the processor manually and watch logs for a QR code:
 
-- `whatsapp_ready: false`:
-  - Wait ~30-60s after deploy and check logs again.
-  - If needed, re-link device from WhatsApp mobile app.
-- `group_found: false`:
-  - Confirm `WHATSAPP_GROUP_ID` (preferred) or group name/invite values.
-  - Check app logs for group resolution errors/timeouts.
-- Notifications fail from main app but manual notifier test works:
-  - Confirm `WHATSAPP_NOTIFIER_URL` is set in Vercel.
-  - Redeploy Vercel after changing env vars.
+```bash
+fly machine run $(fly image show -a surf-tracker-whatsapp-notifier -j | jq -r '.[0].Tag') \
+  --app surf-tracker-whatsapp-notifier \
+  --region iad \
+  --volume whatsapp_data:/data \
+  --vm-memory 2048 \
+  --rm \
+  node process-outbox.js
+```
+
+Scan the QR code from WhatsApp → Settings → Linked Devices.
+
+## Configure main Surf Tracker API (Vercel)
+
+WhatsApp notifications are enabled by default. To disable them:
+
+- `WHATSAPP_NOTIFICATIONS_ENABLED=false`
+
+No `WHATSAPP_NOTIFIER_URL` is needed anymore.
+
+Redeploy Vercel after changing env vars so the API creates outbox rows.
+
+## GitHub Actions scheduler
+
+Workflow: `.github/workflows/process-whatsapp-outbox.yml`
+
+Required repo secret:
+
+- `FLY_API_TOKEN` — Fly deploy token for `surf-tracker-whatsapp-notifier`
+
+After pushing this workflow, you can also run it manually from GitHub → Actions → Process WhatsApp Outbox → Run workflow.
+
+## Manual test
+
+1. Log a surf session in the app.
+2. Confirm a row exists in `whatsapp_notification_outbox` with `status = 'pending'`.
+3. Run the GitHub Action manually or wait up to 10 minutes.
+4. Confirm the row becomes `status = 'sent'`.
 
 ## Environment variables
 
 | Variable | Description |
 |----------|-------------|
-| `PORT` | Server port (default `3001`) |
-| `WHATSAPP_GROUP_NAME` | WhatsApp group name (fallback when resolving by name) |
-| `WHATSAPP_GROUP_ID` | Use this group ID directly; skips lookup (e.g. `123456789@g.us`) |
-| `WHATSAPP_GROUP_INVITE_CODE` | Invite code or full link (e.g. `KPTH...` or `https://chat.whatsapp.com/KPTH...`). Used to resolve the group without `getChats`, avoiding timeouts. |
-| `WHATSAPP_AUTH_PATH` | Path for auth data (default `/data/.wwebjs_auth` on Fly) |
-| `PUPPETEER_EXECUTABLE_PATH` | Chromium path (set in Dockerfile for Fly) |
+| `POSTGRES_URL` | Postgres connection string (required on Fly) |
+| `WHATSAPP_GROUP_ID` | Target WhatsApp group ID |
+| `WHATSAPP_GROUP_NAME` | Group name (legacy fallback) |
+| `WHATSAPP_GROUP_INVITE_CODE` | Invite code (legacy fallback) |
+| `WHATSAPP_AUTH_PATH` | Auth data path (default `/data/.wwebjs_auth`) |
+| `PUPPETEER_EXECUTABLE_PATH` | Chromium path (set in Dockerfile) |
+| `WHATSAPP_INIT_TIMEOUT_MS` | Init timeout (default `120000`) |
+| `WHATSAPP_MAX_ATTEMPTS` | Max send attempts per outbox row (default `5`) |
+| `WHATSAPP_BATCH_SIZE` | Max rows processed per run (default `50`) |
+
+## Troubleshooting
+
+- **No messages sent**
+  - Check outbox rows in Postgres (`status`, `attempts`, `last_error`)
+  - Confirm GitHub Action runs are succeeding
+  - Confirm `POSTGRES_URL` is set on Fly
+- **QR code appears again**
+  - Re-link device from WhatsApp mobile app
+  - Confirm `/data` volume is mounted
+- **Volume mount fails in GitHub Action**
+  - Ensure no old always-on machine still has the volume attached

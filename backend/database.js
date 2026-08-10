@@ -57,6 +57,19 @@ async function initDatabase() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS whatsapp_notification_outbox (
+      id BIGSERIAL PRIMARY KEY,
+      session_id BIGINT NOT NULL UNIQUE REFERENCES surf_sessions(id),
+      message TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INT NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      sent_at TIMESTAMPTZ
+    );
+  `;
 }
 
 module.exports = {

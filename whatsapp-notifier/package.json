@@ -1,13 +1,14 @@
 {
   "name": "whatsapp-notifier",
-  "version": "1.0.0",
-  "main": "server.js",
+  "version": "2.0.0",
+  "main": "process-outbox.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node process-outbox.js",
+    "process-outbox": "node process-outbox.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "whatsapp-web.js": "^1.23.0",
-    "qrcode-terminal": "^0.12.0"
+    "@neondatabase/serverless": "^0.10.4",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.23.0"
   }
 }
