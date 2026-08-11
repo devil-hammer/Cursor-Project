@@ -18,14 +18,22 @@ jobs:
 
       - name: Run short-lived outbox processor
         run: |
-          IMAGE=$(flyctl image show -a surf-tracker-whatsapp-notifier -j | jq -r '.[0].Tag')
-          flyctl machine run "$IMAGE" \
-            --app surf-tracker-whatsapp-notifier \
-            --region iad \
-            --volume whatsapp_data:/data \
-            --vm-memory 2048 \
-            --rm \
-            --restart no \
-            node process-outbox.js
+          APP=surf-tracker-whatsapp-notifier
+          MACHINE_ID=$(flyctl machines list -a "$APP" -j | jq -r '.[0].id // empty')
+          if [ -z "$MACHINE_ID" ]; then
+            echo "No Fly machine found. Deploy whatsapp-notifier first."
+            exit 1
+          fi
+
+          STATE=$(flyctl machines list -a "$APP" -j | jq -r --arg id "$MACHINE_ID" '.[] | select(.id==$id) | .state')
+          echo "Using machine $MACHINE_ID (state=$STATE)"
+
+          # A Fly volume can only attach to one machine. Reuse that machine
+          # instead of creating a new one with `fly machine run --volume`.
+          if [ "$STATE" = "started" ] || [ "$STATE" = "starting" ]; then
+            flyctl machine restart "$MACHINE_ID" -a "$APP"
+          else
+            flyctl machine start "$MACHINE_ID" -a "$APP"
+          fi
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

@@ -6,11 +6,11 @@ Sends surf session notifications to a WhatsApp group using a **DB outbox + short
 
 1. When a surf session is created, the main API writes a row to `whatsapp_notification_outbox` in Postgres.
 2. A GitHub Actions workflow runs every 10 minutes.
-3. Each run starts a short-lived Fly machine that:
+3. Each run starts the existing Fly machine (the one that already has the WhatsApp volume):
    - reads pending outbox rows
    - starts Chromium/WhatsApp only if there is work to send
    - sends messages
-   - exits and releases memory
+   - exits and stays stopped until the next run
 
 This avoids keeping Chromium running 24/7.
 
@@ -44,27 +44,24 @@ fly secrets set POSTGRES_URL='your-neon-connection-string' -a surf-tracker-whats
 fly deploy
 ```
 
-### 5. Stop any old always-on machine
+### 5. Keep a single machine with the volume attached
 
-If you previously ran the old HTTP notifier, destroy or stop the existing machine so the volume is free for scheduled runs:
+Do **not** destroy the machine that owns `whatsapp_data`. A Fly volume can only attach to one machine, so scheduled runs start that same machine.
+
+After deploy, stop it if it is still running the old always-on process:
 
 ```bash
 fly machines list -a surf-tracker-whatsapp-notifier
-fly machine destroy <machine-id> -a surf-tracker-whatsapp-notifier
+fly machine stop <machine-id> -a surf-tracker-whatsapp-notifier
 ```
 
 ### 6. First-time WhatsApp linking
 
-Run the processor manually and watch logs for a QR code:
+Start the existing machine and watch logs for a QR code:
 
 ```bash
-fly machine run $(fly image show -a surf-tracker-whatsapp-notifier -j | jq -r '.[0].Tag') \
-  --app surf-tracker-whatsapp-notifier \
-  --region iad \
-  --volume whatsapp_data:/data \
-  --vm-memory 2048 \
-  --rm \
-  node process-outbox.js
+fly machine start <machine-id> -a surf-tracker-whatsapp-notifier
+fly logs -a surf-tracker-whatsapp-notifier
 ```
 
 Scan the QR code from WhatsApp → Settings → Linked Devices.
@@ -119,5 +116,6 @@ After pushing this workflow, you can also run it manually from GitHub → Action
 - **QR code appears again**
   - Re-link device from WhatsApp mobile app
   - Confirm `/data` volume is mounted
-- **Volume mount fails in GitHub Action**
-  - Ensure no old always-on machine still has the volume attached
+- **`No unattached volumes in region 'iad'`**
+  - The old workflow tried to create a *new* machine. The volume is already attached to the existing one.
+  - Use the updated workflow, which starts that existing machine instead.

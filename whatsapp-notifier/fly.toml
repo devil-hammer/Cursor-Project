@@ -19,8 +19,11 @@ primary_region = 'iad'
   source = 'whatsapp_data'
   destination = '/data'
 
-# No always-on HTTP service. GitHub Actions runs short-lived machines via
-# `fly machine run` to process the DB outbox on a schedule.
+# No always-on HTTP service. GitHub Actions starts this machine on a
+# schedule; the process exits after sending, and this policy keeps it stopped.
+
+[[restart]]
+  policy = 'never'
 
 [[vm]]
   memory = '2gb'
