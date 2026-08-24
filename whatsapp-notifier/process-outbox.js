@@ -1,7 +1,12 @@
-const { fetchPendingNotifications, markSent, markFailed } = require('./db');
+const { fetchPendingNotifications, markSent, markFailed, requeueSentNotifications } = require('./db');
 const { createAndInitializeClient, sendMessage, destroyClient } = require('./whatsapp-client');
 
 async function main() {
+  if (process.env.REQUEUE_SENT === '1' || process.env.REQUEUE_SENT === 'true') {
+    const requeued = await requeueSentNotifications();
+    console.log(`Requeued ${requeued.length} previously sent notification(s).`);
+  }
+
   const pending = await fetchPendingNotifications();
 
   if (pending.length === 0) {
