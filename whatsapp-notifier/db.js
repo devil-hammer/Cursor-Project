@@ -65,8 +65,22 @@ async function markFailed(id, errorMessage) {
   `;
 }
 
+async function requeueSentNotifications() {
+  const sql = getSql();
+  const rows = await sql`
+    UPDATE whatsapp_notification_outbox
+    SET status = 'pending',
+        sent_at = NULL,
+        last_error = NULL
+    WHERE status = 'sent'
+    RETURNING id, session_id;
+  `;
+  return rows;
+}
+
 module.exports = {
   fetchPendingNotifications,
   markSent,
   markFailed,
+  requeueSentNotifications,
 };

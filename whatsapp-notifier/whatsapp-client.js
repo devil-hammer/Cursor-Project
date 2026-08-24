@@ -1,8 +1,26 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 
-const GROUP_ID = process.env.WHATSAPP_GROUP_ID ? process.env.WHATSAPP_GROUP_ID.trim() : null;
-const INIT_TIMEOUT_MS = Number(process.env.WHATSAPP_INIT_TIMEOUT_MS || 120000);
+const GROUP_NAME = process.env.WHATSAPP_GROUP_NAME || 'Semi-kooks';
+const CONFIGURED_GROUP_ID = process.env.WHATSAPP_GROUP_ID
+  ? process.env.WHATSAPP_GROUP_ID.trim()
+  : null;
+const INVITE_CODE = (() => {
+  const value = process.env.WHATSAPP_GROUP_INVITE_CODE || '';
+  if (!value) return null;
+  const match =
+    value.trim().match(/chat\.whatsapp\.com\/([A-Za-z0-9]+)$/) ||
+    value.trim().match(/^([A-Za-z0-9]+)$/);
+  return match ? match[1] : value.trim();
+})();
+const INIT_TIMEOUT_MS = Number(process.env.WHATSAPP_INIT_TIMEOUT_MS || 900000);
+const QR_WAIT_MS = Number(process.env.WHATSAPP_QR_WAIT_MS || 600000);
+// Optional pin. Default is unset so whatsapp-web.js can use a current
+// WhatsApp Web build. Pinning an old HTML made `ready` fire but broke
+// getChats/getChatById/sendMessage (they throw a minified "r" error).
+const WEB_VERSION = process.env.WHATSAPP_WEB_VERSION || null;
+const WEB_VERSION_CACHE_PATH =
+  process.env.WHATSAPP_WEB_VERSION_CACHE_PATH || '/app/wa-version-cache';
 
 function getPuppeteerOptions() {
   const args = [
@@ -30,36 +48,216 @@ function getPuppeteerOptions() {
   return options;
 }
 
+let resolvedGroupId = null;
+
+async function dumpStoreGroups(client) {
+  try {
+    const snapshot = await client.pupPage.evaluate(() => {
+      let chats = [];
+      try {
+        chats = window.require('WAWebCollections').Chat.getModelsArray() || [];
+      } catch (_) {
+        chats = [];
+      }
+      return {
+        hasWWebJS: !!window.WWebJS,
+        chatCount: chats.length,
+        chats: chats.slice(0, 40).map((chat) => ({
+          name: chat.name || chat.formattedTitle || '',
+          id: chat.id?._serialized || chat.id?.$1 || String(chat.id || ''),
+          isGroup: !!(
+            chat.isGroup ||
+            chat.groupMetadata ||
+            String(chat.id?._serialized || chat.id?.$1 || '').endsWith('@g.us')
+          ),
+        })),
+      };
+    });
+    console.log('WhatsApp chat snapshot:', JSON.stringify(snapshot));
+    return snapshot.chats.filter((chat) => chat.isGroup);
+  } catch (err) {
+    console.warn('WhatsApp chat dump failed:', err.message);
+    return [];
+  }
+}
+
+async function fetchGroupsWithRetry(client, attempt = 1, maxAttempts = 3) {
+  try {
+    return await client.getChats();
+  } catch (err) {
+    const isTimeout = (err.message || '').includes('timed out');
+    if (isTimeout && attempt < maxAttempts) {
+      console.log(`getChats timeout, retrying in 10s (attempt ${attempt}/${maxAttempts})...`);
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+      return fetchGroupsWithRetry(client, attempt + 1, maxAttempts);
+    }
+    throw err;
+  }
+}
+
+async function resolveTargetGroup(client) {
+  const targetName = GROUP_NAME.trim().toLowerCase();
+
+  try {
+    const chats = await fetchGroupsWithRetry(client);
+    const group = chats.find(
+      (chat) =>
+        chat.isGroup && chat.name && chat.name.trim().toLowerCase() === targetName
+    );
+
+    if (group) {
+      resolvedGroupId = group.id._serialized;
+      console.log(`Resolved group "${group.name}" -> ${resolvedGroupId}`);
+      return resolvedGroupId;
+    }
+
+    const groupNames = chats.filter((chat) => chat.isGroup).map((chat) => chat.name);
+    console.warn(`Group "${GROUP_NAME}" not found by name. Available groups:`, groupNames.join(', ') || '(none)');
+  } catch (err) {
+    console.warn('Group lookup by name failed:', err.message);
+  }
+
+  const storeGroups = await dumpStoreGroups(client);
+  const storeMatch = storeGroups.find(
+    (group) => group.name && group.name.trim().toLowerCase() === targetName
+  );
+  if (storeMatch?.id) {
+    resolvedGroupId = storeMatch.id;
+    console.log(`Resolved group from WhatsApp Store "${storeMatch.name}" -> ${resolvedGroupId}`);
+    return resolvedGroupId;
+  }
+
+  if (INVITE_CODE) {
+    try {
+      const groupId = await client.acceptInvite(INVITE_CODE);
+      if (groupId) {
+        resolvedGroupId = groupId;
+        console.log(`Resolved group from invite code: ${resolvedGroupId}`);
+        return resolvedGroupId;
+      }
+    } catch (err) {
+      console.warn('Invite lookup failed (may already be in group):', err.message);
+    }
+  }
+
+  if (CONFIGURED_GROUP_ID) {
+    resolvedGroupId = CONFIGURED_GROUP_ID;
+    console.warn(`Using configured group ID fallback: ${resolvedGroupId}`);
+    return resolvedGroupId;
+  }
+
+  throw new Error(`Group "${GROUP_NAME}" could not be resolved`);
+}
+
 async function createAndInitializeClient() {
   return new Promise((resolve, reject) => {
-    const client = new Client({
+    const clientOptions = {
       puppeteer: getPuppeteerOptions(),
       authStrategy: new LocalAuth({
         dataPath: process.env.WHATSAPP_AUTH_PATH || '/data/.wwebjs_auth',
       }),
-    });
+      // WhatsApp Web sync after QR can take several minutes on a cold session.
+      authTimeoutMs: Number(process.env.WHATSAPP_AUTH_TIMEOUT_MS || 900000),
+    };
+    if (WEB_VERSION) {
+      clientOptions.webVersion = WEB_VERSION;
+      clientOptions.webVersionCache = {
+        type: 'local',
+        path: WEB_VERSION_CACHE_PATH,
+      };
+    }
+    const client = new Client(clientOptions);
 
     let settled = false;
+    let timeout = null;
+    let loadingPercent = 0;
+    let loadingComplete = false;
 
     const finish = (fn, value) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
       fn(value);
     };
 
-    const timeout = setTimeout(() => {
-      finish(reject, new Error(`WhatsApp client init timed out after ${INIT_TIMEOUT_MS}ms`));
-    }, INIT_TIMEOUT_MS);
+    const armTimeout = (ms, label) => {
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        finish(reject, new Error(`WhatsApp client init timed out after ${ms}ms (${label})`));
+      }, ms);
+    };
+
+    const waitForChatSync = async () => {
+      // `ready` can fire while the loading screen is still at a few percent.
+      // Sending before chats finish syncing returns empty message objects and
+      // nothing appears in the group.
+      const deadline = Date.now() + 120000;
+      while (!loadingComplete && Date.now() < deadline) {
+        console.log(`Waiting for WhatsApp chat sync (loading=${loadingPercent}%)...`);
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+      if (!loadingComplete) {
+        console.warn('Loading screen never reached 99%+; continuing anyway after wait.');
+      } else {
+        // Extra settle time after load before chat store APIs are reliable.
+        await new Promise((r) => setTimeout(r, 15000));
+      }
+      try {
+        const info = client.info || {};
+        console.log(
+          'WhatsApp session info:',
+          JSON.stringify({
+            pushname: info.pushname,
+            wid: info.wid?._serialized || info.wid,
+            platform: info.platform,
+          })
+        );
+        console.log('WhatsApp state:', await client.getState());
+      } catch (err) {
+        console.warn('Could not read WhatsApp session info:', err.message);
+      }
+    };
+
+    armTimeout(INIT_TIMEOUT_MS, 'waiting for ready');
+
+    // whatsapp-web.js can reject with a bare "auth timeout" string.
+    process.once('unhandledRejection', (reason) => {
+      const message = typeof reason === 'string' ? reason : reason?.message || String(reason);
+      if (message.includes('auth timeout') || message.includes('ready timeout')) {
+        finish(reject, new Error(message));
+      }
+    });
 
     client.on('qr', (qr) => {
       console.log('QR Code received, scan with your phone:');
+      console.log(`Waiting up to ${Math.round(QR_WAIT_MS / 1000)}s for you to scan before this run exits.`);
       qrcode.generate(qr, { small: true });
+      // Give enough time to open WhatsApp and scan from the logs.
+      armTimeout(QR_WAIT_MS, 'waiting for QR scan');
     });
 
-    client.on('ready', () => {
+    client.on('loading_screen', (percent, message) => {
+      loadingPercent = Number(percent) || 0;
+      // WhatsApp often stalls at 99% and never emits 100.
+      if (loadingPercent >= 99) loadingComplete = true;
+      console.log('WhatsApp loading screen:', { percent, message });
+    });
+
+    client.on('authenticated', () => {
+      console.log('WhatsApp authenticated (session restored or QR scan accepted)');
+      // After scan, sync/load can take a long time — keep waiting for ready.
+      armTimeout(INIT_TIMEOUT_MS, 'waiting for ready after auth');
+    });
+
+    client.on('ready', async () => {
       console.log('WhatsApp client is ready');
-      finish(resolve, client);
+      try {
+        await waitForChatSync();
+        await resolveTargetGroup(client);
+        finish(resolve, client);
+      } catch (err) {
+        finish(reject, err);
+      }
     });
 
     client.on('auth_failure', (msg) => {
@@ -76,15 +274,86 @@ async function createAndInitializeClient() {
   });
 }
 
-async function sendMessage(client, message) {
-  if (!GROUP_ID) {
-    throw new Error('WHATSAPP_GROUP_ID is not configured');
+async function waitForServerAck(client, sentMessage, timeoutMs = 45000) {
+  if (!sentMessage?.id?._serialized) {
+    throw new Error('sendMessage returned no message id — delivery not confirmed');
   }
-  await client.sendMessage(GROUP_ID, message, { sendSeen: false });
+  if (typeof sentMessage.ack === 'number' && sentMessage.ack >= 1) {
+    console.log(`Message already ACKed (ack=${sentMessage.ack})`);
+    return;
+  }
+
+  const messageId = sentMessage.id._serialized;
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      client.removeListener('message_ack', onAck);
+      reject(new Error(`Timed out waiting for WhatsApp server ACK for ${messageId}`));
+    }, timeoutMs);
+
+    function onAck(msg, ack) {
+      if (msg?.id?._serialized !== messageId) return;
+      console.log(`Message ACK update: ${ack}`);
+      if (ack >= 1) {
+        clearTimeout(timer);
+        client.removeListener('message_ack', onAck);
+        resolve();
+      }
+    }
+
+    client.on('message_ack', onAck);
+  });
+}
+
+async function sendMessage(client, message) {
+  if (!resolvedGroupId) {
+    await resolveTargetGroup(client);
+  }
+  if (!resolvedGroupId) {
+    throw new Error('WhatsApp target group is not configured or could not be resolved');
+  }
+
+  // Confirm the chat exists and log its name so we know where we're posting.
+  let chatLoaded = false;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      const chat = await client.getChatById(resolvedGroupId);
+      console.log(
+        `Target chat: name="${chat?.name || '(unknown)'}" isGroup=${!!chat?.isGroup} id=${resolvedGroupId}`
+      );
+      chatLoaded = true;
+      break;
+    } catch (err) {
+      console.warn(`getChatById attempt ${attempt}/5 failed: ${err.message}`);
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+  }
+  if (!chatLoaded) {
+    throw new Error(
+      `Could not load WhatsApp chat ${resolvedGroupId}. Linked account may not be in the group, or chats are still syncing.`
+    );
+  }
+
+  console.log(`Sending message to group ${resolvedGroupId}`);
+  // waitUntilMsgSent waits for WhatsApp server acceptance. Without this,
+  // sendMessage can resolve after only writing to the local store — and then
+  // destroy() kills Chromium before the message ever leaves the machine.
+  const sent = await client.sendMessage(resolvedGroupId, message, {
+    sendSeen: false,
+    waitUntilMsgSent: true,
+  });
+  console.log(
+    `sendMessage returned id=${sent?.id?._serialized || '(none)'} ack=${sent?.ack ?? 'n/a'}`
+  );
+  if (!sent?.id?._serialized) {
+    throw new Error('sendMessage returned no message id — treating as failed delivery');
+  }
+  await waitForServerAck(client, sent);
 }
 
 async function destroyClient(client) {
   if (!client) return;
+  // Brief settle so any in-flight sync finishes before Chromium is killed.
+  await new Promise((resolve) => setTimeout(resolve, 3000));
   try {
     await client.destroy();
   } catch (err) {
@@ -96,4 +365,5 @@ module.exports = {
   createAndInitializeClient,
   sendMessage,
   destroyClient,
+  resolveTargetGroup,
 };

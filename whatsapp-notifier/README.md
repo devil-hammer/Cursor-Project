@@ -32,10 +32,14 @@ fly volumes create whatsapp_data --size 1 --region iad
 
 ### 3. Set secrets on Fly
 
-The outbox processor needs the same Postgres connection string as your main API:
+The outbox processor needs the **real** Postgres connection string from Vercel/Neon
+(not a placeholder). It must look like `postgres://...` or `postgresql://...`.
+
+Copy it from Vercel → Project → Settings → Environment Variables (`POSTGRES_URL`
+or `DATABASE_URL`), then:
 
 ```bash
-fly secrets set POSTGRES_URL='your-neon-connection-string' -a surf-tracker-whatsapp-notifier
+fly secrets set POSTGRES_URL='postgres://USER:PASSWORD@HOST/DB?sslmode=require' -a surf-tracker-whatsapp-notifier
 ```
 
 ### 4. Deploy the image
@@ -103,16 +107,19 @@ After pushing this workflow, you can also run it manually from GitHub → Action
 | `WHATSAPP_GROUP_INVITE_CODE` | Invite code (legacy fallback) |
 | `WHATSAPP_AUTH_PATH` | Auth data path (default `/data/.wwebjs_auth`) |
 | `PUPPETEER_EXECUTABLE_PATH` | Chromium path (set in Dockerfile) |
-| `WHATSAPP_INIT_TIMEOUT_MS` | Init timeout (default `120000`) |
+| `WHATSAPP_INIT_TIMEOUT_MS` | Init timeout before ready (default `600000` = 10 min) |
+| `WHATSAPP_QR_WAIT_MS` | Extra wait after a QR is shown for phone scan (default `600000`) |
 | `WHATSAPP_MAX_ATTEMPTS` | Max send attempts per outbox row (default `5`) |
 | `WHATSAPP_BATCH_SIZE` | Max rows processed per run (default `50`) |
 
 ## Troubleshooting
 
-- **No messages sent**
+- **No messages sent / Action succeeds but nothing posts**
+  - Check Fly logs: `fly logs -a surf-tracker-whatsapp-notifier --no-tail`
+  - If you see `Connection string: your-neon-connection-string`, the Fly secret
+    was set to the README placeholder. Replace it with the real Neon URL.
   - Check outbox rows in Postgres (`status`, `attempts`, `last_error`)
-  - Confirm GitHub Action runs are succeeding
-  - Confirm `POSTGRES_URL` is set on Fly
+  - Confirm GitHub Action runs are succeeding *and* the machine exit code is `0`
 - **QR code appears again**
   - Re-link device from WhatsApp mobile app
   - Confirm `/data` volume is mounted

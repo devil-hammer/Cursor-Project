@@ -18,6 +18,7 @@ jobs:
 
       - name: Run short-lived outbox processor
         run: |
+          set -euo pipefail
           APP=surf-tracker-whatsapp-notifier
           MACHINE_ID=$(flyctl machines list -a "$APP" -j | jq -r '.[0].id // empty')
           if [ -z "$MACHINE_ID" ]; then
@@ -30,10 +31,29 @@ jobs:
 
           # A Fly volume can only attach to one machine. Reuse that machine
           # instead of creating a new one with `fly machine run --volume`.
+          # Do NOT restart an already-running machine — that interrupts QR
+          # linking and can corrupt the LocalAuth session on /data.
           if [ "$STATE" = "started" ] || [ "$STATE" = "starting" ]; then
-            flyctl machine restart "$MACHINE_ID" -a "$APP"
+            echo "Machine already running; waiting for it to finish."
           else
             flyctl machine start "$MACHINE_ID" -a "$APP"
+          fi
+
+          # Wait for the batch job to finish. Previously we only checked that
+          # the machine started, which hid processor failures (e.g. bad DB URL).
+          echo "Waiting for machine to stop..."
+          flyctl machine wait "$MACHINE_ID" -a "$APP" --state stopped -w 20m
+
+          EXIT_CODE=$(flyctl machines list -a "$APP" -j | jq -r --arg id "$MACHINE_ID" '
+            .[] | select(.id==$id) | .events[]?
+            | select(.type=="exit")
+            | .request.exit_event.exit_code
+          ' | head -1)
+          echo "Machine exit code: ${EXIT_CODE:-unknown}"
+          if [ -z "$EXIT_CODE" ] || [ "$EXIT_CODE" != "0" ]; then
+            echo "Outbox processor failed (exit_code=${EXIT_CODE:-unknown})."
+            echo "Check Fly logs: fly logs -a $APP --no-tail"
+            exit 1
           fi
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
