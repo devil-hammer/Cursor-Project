@@ -44,16 +44,41 @@ jobs:
           echo "Waiting for machine to stop..."
           flyctl machine wait "$MACHINE_ID" -a "$APP" --state stopped -w 20m
 
-          EXIT_CODE=$(flyctl machines list -a "$APP" -j | jq -r --arg id "$MACHINE_ID" '
-            .[] | select(.id==$id) | .events[]?
-            | select(.type=="exit")
-            | .request.exit_event.exit_code
-          ' | head -1)
-          echo "Machine exit code: ${EXIT_CODE:-unknown}"
-          if [ -z "$EXIT_CODE" ] || [ "$EXIT_CODE" != "0" ]; then
-            echo "Outbox processor failed (exit_code=${EXIT_CODE:-unknown})."
+          # Fly often omits exit_code on clean short-lived exits (events only
+          # include signal/exited_at). Prefer exit_code when present; otherwise
+          # confirm success from recent app logs.
+          EXIT_EVENT=$(flyctl machines list -a "$APP" -j | jq -c --arg id "$MACHINE_ID" '
+            [.[] | select(.id==$id) | .events[]? | select(.type=="exit")][0] // {}
+          ')
+          EXIT_CODE=$(echo "$EXIT_EVENT" | jq -r '.request.exit_event.exit_code // empty')
+          EXIT_STATUS=$(echo "$EXIT_EVENT" | jq -r '.status // empty')
+          echo "Machine exit event: status=${EXIT_STATUS:-unknown} exit_code=${EXIT_CODE:-omitted}"
+
+          if [ -n "$EXIT_CODE" ] && [ "$EXIT_CODE" != "0" ]; then
+            echo "Outbox processor failed (exit_code=$EXIT_CODE)."
             echo "Check Fly logs: fly logs -a $APP --no-tail"
             exit 1
+          fi
+
+          if [ -z "$EXIT_CODE" ]; then
+            RECENT_LOGS=$(flyctl logs -a "$APP" --no-tail || true)
+            if echo "$RECENT_LOGS" | grep -q 'Main child exited normally with code: 0'; then
+              echo "Fly omitted exit_code; logs confirm clean exit (code 0)."
+            elif echo "$RECENT_LOGS" | grep -Eq 'Main child exited normally with code: [1-9][0-9]*'; then
+              echo "Outbox processor failed according to Fly logs."
+              echo "$RECENT_LOGS" | tail -40
+              exit 1
+            elif echo "$RECENT_LOGS" | grep -q 'Outbox processor failed'; then
+              echo "Outbox processor failed according to Fly logs."
+              echo "$RECENT_LOGS" | tail -40
+              exit 1
+            elif [ "$EXIT_STATUS" = "stopped" ]; then
+              echo "Fly omitted exit_code; machine stopped cleanly — treating as success."
+            else
+              echo "Could not confirm processor success (status=${EXIT_STATUS:-unknown})."
+              echo "Check Fly logs: fly logs -a $APP --no-tail"
+              exit 1
+            fi
           fi
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
