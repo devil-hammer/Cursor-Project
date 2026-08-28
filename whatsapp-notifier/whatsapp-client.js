@@ -15,6 +15,7 @@ const INVITE_CODE = (() => {
 })();
 const INIT_TIMEOUT_MS = Number(process.env.WHATSAPP_INIT_TIMEOUT_MS || 900000);
 const QR_WAIT_MS = Number(process.env.WHATSAPP_QR_WAIT_MS || 600000);
+const READY_FALLBACK_MS = Number(process.env.WHATSAPP_READY_FALLBACK_MS || 180000);
 // Optional pin. Default is unset so whatsapp-web.js can use a current
 // WhatsApp Web build. Pinning an old HTML made `ready` fire but broke
 // getChats/getChatById/sendMessage (they throw a minified "r" error).
@@ -172,12 +173,42 @@ async function createAndInitializeClient() {
     let timeout = null;
     let loadingPercent = 0;
     let loadingComplete = false;
+    let isAuthenticated = false;
+    let readyFallbackTimer = null;
 
     const finish = (fn, value) => {
       if (settled) return;
       settled = true;
       if (timeout) clearTimeout(timeout);
+      if (readyFallbackTimer) clearTimeout(readyFallbackTimer);
       fn(value);
+    };
+
+    const completeInit = async (label) => {
+      console.log(`WhatsApp init complete (${label})`);
+      try {
+        await waitForChatSync();
+        await resolveTargetGroup(client);
+        finish(resolve, client);
+      } catch (err) {
+        finish(reject, err);
+      }
+    };
+
+    const scheduleReadyFallback = () => {
+      if (readyFallbackTimer) clearTimeout(readyFallbackTimer);
+      readyFallbackTimer = setTimeout(async () => {
+        if (settled) return;
+        try {
+          const state = await client.getState();
+          console.log(`Ready fallback check: state=${state}, loading=${loadingPercent}%`);
+          if (state === 'CONNECTED') {
+            await completeInit('CONNECTED fallback after auth');
+          }
+        } catch (err) {
+          console.warn('Ready fallback check failed:', err.message);
+        }
+      }, READY_FALLBACK_MS);
     };
 
     const armTimeout = (ms, label) => {
@@ -245,19 +276,15 @@ async function createAndInitializeClient() {
 
     client.on('authenticated', () => {
       console.log('WhatsApp authenticated (session restored or QR scan accepted)');
+      isAuthenticated = true;
       // After scan, sync/load can take a long time — keep waiting for ready.
       armTimeout(INIT_TIMEOUT_MS, 'waiting for ready after auth');
+      scheduleReadyFallback();
     });
 
     client.on('ready', async () => {
       console.log('WhatsApp client is ready');
-      try {
-        await waitForChatSync();
-        await resolveTargetGroup(client);
-        finish(resolve, client);
-      } catch (err) {
-        finish(reject, err);
-      }
+      await completeInit('ready event');
     });
 
     client.on('auth_failure', (msg) => {

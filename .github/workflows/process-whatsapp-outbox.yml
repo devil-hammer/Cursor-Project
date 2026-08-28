@@ -42,7 +42,7 @@ jobs:
           # Wait for the batch job to finish. Previously we only checked that
           # the machine started, which hid processor failures (e.g. bad DB URL).
           echo "Waiting for machine to stop..."
-          flyctl machine wait "$MACHINE_ID" -a "$APP" --state stopped -w 20m
+          flyctl machine wait "$MACHINE_ID" -a "$APP" --state stopped -w 25m
 
           # Fly often omits exit_code on clean short-lived exits (events only
           # include signal/exited_at). Prefer exit_code when present; otherwise
